@@ -1,0 +1,29 @@
+{
+  "name": "persistent-memory",
+  "version": "0.4.1",
+  "description": "Persistent Memory System for long-running projects: Claude reads durable, archived memory files from your own storage at the start of each session instead of making you re-explain context. Use when the user says 'persistent memory', 'remember my project', 'log our decisions in files', or complains about re-explaining context. Not for one-off chats.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/msamkari/persistent-memory-plugin",
+  "repository": "https://github.com/msamkari/persistent-memory-plugin",
+  "keywords": [
+    "memory",
+    "persistent-memory",
+    "project-context",
+    "archive"
+  ],
+  "author": {
+    "name": "Mohammad Samkari",
+    "url": "https://github.com/msamkari"
+  },
+  "experimental": {
+    "evals": "evals"
+  },
+  "userConfig": {
+    "memory_dir": {
+      "type": "directory",
+      "title": "Memory folder",
+      "description": "Local folder that holds your Persistent_Memory_System files (for example your synced Dropbox folder). Optional: only used by the session-start index hook.",
+      "required": false
+    }
+  }
+}

@@ -1,0 +1,10 @@
+Persistent Memory (Claude plugin)
+Copyright 2026 Mohammad Samkari
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The skill text in skills/persistent-memory-system/SKILL.md is the same text as
+the standalone release (persistent-memory-system-skill, v8.1). Earlier
+standalone releases were published under PolyForm Noncommercial 1.0.0 and
+remain under that license. This plugin package, including the skill text as
+distributed here, is licensed under Apache-2.0 by the copyright holder.
