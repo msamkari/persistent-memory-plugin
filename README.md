@@ -29,7 +29,7 @@ Installation steps (Windows, macOS, Linux, auto-update, troubleshooting): see [`
 /plugin install persistent-memory@samkari-plugins
 ```
 
-**Cowork / claude.ai:** upload the plugin folder `plugins/persistent-memory/` as a zip (one zip, not a zip inside a zip).
+**Cowork / claude.ai:** upload this repository as a zip (the plugin files at the zip root) (one zip, not a zip inside a zip).
 
 **Manual test without installing:** `claude --plugin-dir plugins/persistent-memory`
 
