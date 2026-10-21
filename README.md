@@ -1,4 +1,4 @@
-# Persistent Memory — Claude plugin (v0.4.1)
+# Persistent Memory — Claude plugin (v1.0.0)
 
 Stop re-explaining your project every session. This plugin packages the **Persistent Memory System** skill (v8.1): Claude reads durable, archived memory files that live in *your own* storage (Dropbox, Drive, M365, Notion), saves before it acts, and never deletes.
 
