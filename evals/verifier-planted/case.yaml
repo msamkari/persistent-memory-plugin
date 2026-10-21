@@ -1,0 +1,9 @@
+schema_version: "1.1"
+name: verifier-planted
+runs: 2
+context:
+  scaffold_script: setup.sh
+execution:
+  max_turns: 12
+  allowed_tools: [Read, Glob, Grep, Agent]
+  prompt: "Use the memory-verifier agent. Check that mem/State.md reflects what mem/Log.md records, read-only. Report every contradiction and every claim that presents an inference as fact."

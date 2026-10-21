@@ -1,0 +1,29 @@
+name: plugin-test
+on:
+  push:
+    paths-ignore: ["**.md"]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Unit tests
+        run: node --test tests/doctor.test.mjs tests/lint.test.mjs tests/gate.test.mjs
+      - name: SessionStart hook smoke test
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/mem/MDs/System_Current_MD"
+          echo "# t" > "$RUNNER_TEMP/mem/MDs/System_Current_MD/00_Archiving_Rule.md"
+          out=$(PMS_MEMORY_DIR="$RUNNER_TEMP/mem" node hooks/session-index.mjs)
+          echo "$out" | grep -q additionalContext
+      - name: Hook is silent without a folder
+        shell: bash
+        run: test -z "$(env -u PMS_MEMORY_DIR node hooks/session-index.mjs)"
