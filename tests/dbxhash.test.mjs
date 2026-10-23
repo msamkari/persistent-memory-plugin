@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -38,4 +38,19 @@ test("CLI: match exits 0, mismatch exits 1, missing file exits 2, no args exits 
   const bad = run(f, EMPTY); assert.equal(bad.status, 1); assert.match(bad.stdout, /MISMATCH/);
   assert.equal(run("/nonexistent/zz").status, 2);
   assert.equal(run().status, 2);
+});
+test("expected hash: whitespace, newline and sha256: prefix are accepted; empty or malformed is an error, never a pass", () => {
+  const f = tmpfile(Buffer.from("hello"));
+  const run = (...a) => spawnSync(process.execPath, [script, ...a], { encoding: "utf8" });
+  assert.equal(run(f, ` ${HELLO} `).status, 0);
+  assert.equal(run(f, `${HELLO}\n`).status, 0);
+  assert.equal(run(f, `sha256:${HELLO}`).status, 0);
+  assert.equal(run(f, "").status, 2);
+  assert.equal(run(f, "abc123").status, 2);
+});
+test("a directory is refused instead of hashed as empty", () => {
+  const d = mkdtempSync(join(tmpdir(), "dbxh-dir-"));
+  mkdirSync(join(d, "sub"));
+  const r = spawnSync(process.execPath, [script, join(d, "sub")], { encoding: "utf8" });
+  assert.equal(r.status, 2);
 });

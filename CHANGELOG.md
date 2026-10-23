@@ -3,7 +3,7 @@
 ## 1.2.0 (2026-10-23)
 - Added `scripts/dbxhash.mjs`: Dropbox content hash of a local file, with an optional expected hash (exit 0 match, 1 mismatch, 2 error). Read-only, no network.
 - Added `docs/safe-rewrite.md`: how to rewrite a large memory file without silent corruption (stage, compare hash, then two moves).
-- 4 new tests (37 total); vectors computed independently.
+- 6 new tests (39 total); vectors computed independently. Review fixes: tolerant expected hash, empty or malformed expected hash is an error, non-regular files refused, short reads handled.
 
 ## 1.1.0 (2026-10-23)
 - Added `scripts/cost.mjs`: estimated start-of-session read cost of `MDs/System_Current_MD` (read-only, no network).

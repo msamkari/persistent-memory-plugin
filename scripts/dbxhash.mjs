@@ -19,14 +19,22 @@ export function dropboxHashOfBuffer(buf) {
 }
 
 export function dropboxHashOfFile(path) {
-  const size = statSync(path).size;
+  const st = statSync(path);
+  if (!st.isFile()) throw Object.assign(new Error("not a regular file"), { code: "ENOTFILE" });
+  const size = st.size;
   const outer = createHash("sha256");
   const fd = openSync(path, "r");
   try {
     const buf = Buffer.alloc(BLOCK);
     for (let pos = 0; pos < size; pos += BLOCK) {
-      const n = readSync(fd, buf, 0, Math.min(BLOCK, size - pos), pos);
-      outer.update(createHash("sha256").update(buf.subarray(0, n)).digest());
+      const want = Math.min(BLOCK, size - pos);
+      let got = 0;
+      while (got < want) { // a read may return fewer bytes than asked; keep going until the block is full
+        const n = readSync(fd, buf, got, want - got, pos + got);
+        if (n === 0) throw Object.assign(new Error("file changed while reading"), { code: "ESHORT" });
+        got += n;
+      }
+      outer.update(createHash("sha256").update(buf.subarray(0, got)).digest());
     }
   } finally { closeSync(fd); }
   return { size, hash: outer.digest("hex") };
@@ -36,13 +44,16 @@ function isMain() {
   try { return !!process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
 }
 if (isMain()) {
-  const [file, expected] = process.argv.slice(2);
+  const [file, expectedRaw] = process.argv.slice(2);
   if (!file) { console.error("usage: node dbxhash.mjs <file> [expected_hash]"); process.exit(2); }
+  // An expected hash may arrive with spaces, a newline or a "sha256:" prefix; an EMPTY one is an error, not a pass.
+  const expected = expectedRaw === undefined ? undefined : expectedRaw.trim().replace(/^sha256:/i, "").toLowerCase();
+  if (expected !== undefined && !/^[0-9a-f]{64}$/.test(expected)) { console.error("expected hash must be 64 hex characters"); process.exit(2); }
   try {
     const { size, hash } = dropboxHashOfFile(file);
     console.log(`${hash}  ${size} bytes  ${file}`);
-    if (expected) {
-      const ok = hash === expected.toLowerCase();
+    if (expected !== undefined) {
+      const ok = hash === expected;
       console.log(ok ? "MATCH" : "MISMATCH");
       process.exit(ok ? 0 : 1);
     }
