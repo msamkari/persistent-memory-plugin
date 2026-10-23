@@ -31,12 +31,12 @@ Installation steps (Windows, macOS, Linux, auto-update, troubleshooting): see [`
 
 **Cowork / claude.ai:** upload this repository as a zip (the plugin files at the zip root) (one zip, not a zip inside a zip).
 
-**Manual test without installing:** `claude --plugin-dir plugins/persistent-memory`
+**Manual test without installing:** `claude --plugin-dir .`
 
 Optional setting `memory_dir`: your local memory folder (for example the synced Dropbox folder). Only the hook uses it.
 
 ## Tests
-`node --test plugins/persistent-memory/tests/doctor.test.mjs plugins/persistent-memory/tests/lint.test.mjs plugins/persistent-memory/tests/gate.test.mjs` (19 checks); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval plugins/persistent-memory` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (41 checks); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Long sessions: use the advisor (optional)
 For long, multi-step work, Claude Code can consult a stronger model at decision points: run `/advisor opus` (or set `advisorModel`). It is experimental, needs the Anthropic API and Claude Code feature-flag fetching (it stays off if `DISABLE_TELEMETRY` is set), and its tokens are billed at the advisor model's rate. See https://code.claude.com/docs/en/advisor.
@@ -57,7 +57,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 The session hook is read-only; the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## License
-Apache-2.0 (see `plugins/persistent-memory/LICENSE` and `NOTICE`). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.
+Apache-2.0 (see `LICENSE` and `NOTICE`; copyright 2026 Mohammad Samkari). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.
 
 ## Start-of-session read cost (v1.1.0)
 

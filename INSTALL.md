@@ -152,7 +152,7 @@ Type these inside Claude Code (not in PowerShell/bash), one at a time:
 When enabled, the screen shows **"Auto-update enabled. Claude Code will automatically update this marketplace and its installed plugins."** and the menu item changes to **Disable auto-update**. Do not press it unless you want to turn updates off.
 عند التفعيل تظهر العبارة أعلاه ويتحول الزر إلى **Disable auto-update**؛ لا تضغطه إلا إذا أردت إيقاف التحديث.
 
-Note for maintainers: a new version reaches users when `version` in `plugins/persistent-memory/.claude-plugin/plugin.json` is raised, so bump it with every published change.
+Note for maintainers: a new version reaches users when `version` in `.claude-plugin/plugin.json` is raised, so bump it with every published change.
 ملاحظة للمشرفين: يصل الإصدار الجديد للمستخدمين عند رفع `version` في ملف `plugin.json`، فارفعه مع كل تعديل منشور.
 
 ---
