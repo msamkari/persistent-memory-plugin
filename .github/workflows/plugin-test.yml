@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
       - name: Unit tests
-        run: node --test tests/doctor.test.mjs tests/lint.test.mjs tests/gate.test.mjs
+        run: node --test tests/doctor.test.mjs tests/lint.test.mjs tests/gate.test.mjs tests/cost.test.mjs
       - name: SessionStart hook smoke test
         shell: bash
         run: |

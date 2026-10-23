@@ -1,4 +1,4 @@
-# Persistent Memory — Claude plugin (v1.0.0)
+# Persistent Memory — Claude plugin (v1.1.0)
 
 Stop re-explaining your project every session. This plugin packages the **Persistent Memory System** skill (v8.1): Claude reads durable, archived memory files that live in *your own* storage (Dropbox, Drive, M365, Notion), saves before it acts, and never deletes.
 
@@ -7,7 +7,7 @@ It contains:
 | Part | Where it works | What it does |
 |---|---|---|
 | Skill `persistent-memory-system` | claude.ai, Cowork, Claude Code | The full system (identical, byte for byte, to the published skill v8.1) |
-| Skill `memory-status` | Claude Code / Cowork | Read-only status of your local memory folder (`/persistent-memory:memory-status`) |
+| Skill `memory-status` | Claude Code / Cowork (cost line needs Node) | Read-only status of your local memory folder (`/persistent-memory:memory-status`), including the estimated token cost of the files read in full at every session start |
 | Skill `memory-lint` | Claude Code / Cowork (needs Node) | Deterministic checks of entry numbering, references to entries that do not exist, and archive links. `--apply` fixes only unique path typos, archiving the old file first. Cannot judge facts; that is the verifier agent's job |
 | Skill `memory-doctor` | Claude Code / Cowork (needs Node) | One read-only health check: missing/empty files, sync-conflict copies, secrets, text that tries to instruct the assistant. Fails closed |
 | Skill `memory-pending` | Claude Code / Cowork | Standard format for held (pending) items: quote, who said it, confidence, reason held. Third-party text is never recorded as your own words |
@@ -58,3 +58,9 @@ The session hook is read-only; the approval gate only reads the command it is sh
 
 ## License
 Apache-2.0 (see `plugins/persistent-memory/LICENSE` and `NOTICE`). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.
+
+## Start-of-session read cost (v1.1.0)
+
+The session-start hook and `memory-status` now show how big the files read in full at every session start are, with an estimate of their token cost. A "Suggestion only" line appears when one file passes 60 KB or the folder passes 150 KB (override with `PMS_WARN_FILE_KB` / `PMS_WARN_TOTAL_KB`). It never changes your files and never changes how memory is read. The token figure is an estimate from byte counts (about 0.29 tokens per ASCII byte and 0.48 per non-ASCII byte), usually within ~20%.
+
+Why only a suggestion: we tested replacing "read everything" with a tiered read (index plus on-demand fetch) and kept the full read. See [`docs/experiments/tiered-read-2026-10.md`](docs/experiments/tiered-read-2026-10.md).
