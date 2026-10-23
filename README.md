@@ -1,4 +1,4 @@
-# Persistent Memory — Claude plugin (v1.1.0)
+# Persistent Memory — Claude plugin (v1.2.0)
 
 Stop re-explaining your project every session. This plugin packages the **Persistent Memory System** skill (v8.1): Claude reads durable, archived memory files that live in *your own* storage (Dropbox, Drive, M365, Notion), saves before it acts, and never deletes.
 
@@ -64,3 +64,7 @@ Apache-2.0 (see `plugins/persistent-memory/LICENSE` and `NOTICE`). Earlier stand
 The session-start hook and `memory-status` now show how big the files read in full at every session start are, with an estimate of their token cost. A "Suggestion only" line appears when one file passes 60 KB or the folder passes 150 KB (override with `PMS_WARN_FILE_KB` / `PMS_WARN_TOTAL_KB`). It never changes your files and never changes how memory is read. The token figure is an estimate from byte counts (about 0.29 tokens per ASCII byte and 0.48 per non-ASCII byte), usually within ~20%.
 
 Why only a suggestion: we tested replacing "read everything" with a tiered read (index plus on-demand fetch) and kept the full read. See [`docs/experiments/tiered-read-2026-10.md`](docs/experiments/tiered-read-2026-10.md).
+
+## Safe rewrite of large files (v1.2.0)
+
+`scripts/dbxhash.mjs` computes the Dropbox content hash of a local file, so an upload can be verified byte for byte before it replaces a live memory file. The procedure is in [`docs/safe-rewrite.md`](docs/safe-rewrite.md).
