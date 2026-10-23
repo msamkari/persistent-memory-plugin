@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1 (2026-10-23)
+- Removed a stray `L/` folder (eight scratch files from a review test) that was committed into 1.1.0 by mistake. No plugin behavior changed.
+- Added `tests/layout.test.mjs` (run in CI): fails if a tracked top-level entry is not on the known list, or a tracked path is over 120 characters.
+
 ## 1.2.0 (2026-10-23)
 - Added `scripts/dbxhash.mjs`: Dropbox content hash of a local file, with an optional expected hash (exit 0 match, 1 mismatch, 2 error). Read-only, no network.
 - Added `docs/safe-rewrite.md`: how to rewrite a large memory file without silent corruption (stage, compare hash, then two moves).
