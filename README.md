@@ -79,7 +79,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 ## Known limitations
 
 - Hooks and agents run only in Claude Code and Cowork, not in claude.ai chat.
-- Windows: the hook is Node (`.mjs`), no bash needed; **not yet tested on Windows**.
+- Windows: the hook is Node (`.mjs`), no bash needed. The test suite passes on Windows in CI, but **the hook has not yet been tried in a real Claude Code session on Windows**.
 - `memory-status`, `memory-lint`, `memory-doctor`, `memory-activity` and the hooks need Node.js.
 - The skill needs a connected storage (a cloud connector or a local folder Claude can read and write); without one it cannot keep memory between sessions.
 
