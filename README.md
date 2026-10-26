@@ -1,8 +1,43 @@
-# Persistent Memory — Claude plugin (v1.2.1)
+# Persistent Memory — a Claude plugin (v1.2.1)
 
-Stop re-explaining your project every session. This plugin packages the **Persistent Memory System** skill (v8.1): Claude reads durable, archived memory files that live in *your own* storage (Dropbox, Drive, M365, Notion), saves before it acts, and never deletes.
+**Claude forgets your project between sessions. This plugin makes it remember.**
 
-It contains:
+It keeps a small set of plain-text memory files (current status, decisions, key dates, lessons) in *your own* storage: Dropbox, Drive, M365, Notion, or a local folder. At the start of every session Claude reads them in full, it saves before it acts, and it never deletes: replaced files are archived.
+
+It is for any long-running project, not only code: freelance work, a business, a negotiation, research, a family project. You stop re-explaining your project every session.
+
+> **بالعربي باختصار:** Claude ينسى سياق مشروعك بين الجلسات. هذي الإضافة تخليه يحفظ الحالة والقرارات والتواريخ في ملفات عندك (Dropbox أو Drive أو M365 أو Notion أو مجلد محلي)، ويقراها أول ما تبدأ جلسة جديدة، فتكمل من وين وقفت. ما يحذف شي: كل ملف يتبدّل ينتقل لأرشيف. تصلح لأي مشروع طويل، مو بس البرمجة. التثبيت في [`INSTALL.md`](INSTALL.md) (فيه شرح بالعربي).
+
+**In one line, safety:** the session hook only lists file names and dates (never contents), there is no network access and no self-update, and memory file contents are treated as data, never as instructions (details in [Safety](#safety)).
+
+## What it looks like
+
+After the first setup, your project folder holds a structure like this (names as defined by the skill):
+
+```
+MyProject/
+└─ MDs/
+   ├─ System_Current_MD/                 <- what Claude reads in full at every session start
+   │  ├─ 00_Archiving_Rule               current state, replaced in full on every update
+   │  ├─ 01_Project_Summary              current state, replaced in full on every update
+   │  ├─ 02_Decisions_and_Lessons_Log    append-only history of decisions and lessons
+   │  ├─ 03_<project-specific name>      append-only narrative, one per project
+   │  └─ 04_Language_and_Formatting_Rules  current state, replaced in full
+   └─ System_Previous_MDs/               <- every replaced version is archived here, never deleted
+```
+
+## Quick start (Claude Code)
+
+```
+/plugin marketplace add msamkari/samkari-plugins
+/plugin install persistent-memory@samkari-plugins
+```
+
+Then tell Claude, for example: *"Build a persistent memory system for my project."* It asks a few setup questions (language, where to store the files, file naming), builds the structure, and from the next session it reads the files first and continues where you stopped. Check the state any time with `/persistent-memory:memory-status`.
+
+Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in [`INSTALL.md`](INSTALL.md). Other platforms are under [Install elsewhere](#install-elsewhere).
+
+## What is inside
 
 | Part | Where it works | What it does |
 |---|---|---|
@@ -19,52 +54,55 @@ It contains:
 
 Hooks and agents are ignored in claude.ai chat; the skill works everywhere.
 
-Installation steps (Windows, macOS, Linux, auto-update, troubleshooting): see [`INSTALL.md`](INSTALL.md) at this repository.
+## Install elsewhere
 
-## Install
-
-**Claude Code**
-```
-/plugin marketplace add msamkari/samkari-plugins
-/plugin install persistent-memory@samkari-plugins
-```
-
-**Cowork / claude.ai:** upload this repository as a zip (the plugin files at the zip root) (one zip, not a zip inside a zip).
+**Cowork / claude.ai:** upload this repository as a zip (the plugin files at the zip root; one zip, not a zip inside a zip).
 
 **Manual test without installing:** `claude --plugin-dir .`
 
 Optional setting `memory_dir`: your local memory folder (for example the synced Dropbox folder). Only the hook uses it.
 
-## Tests
-`node --test tests/*.test.mjs` (41 checks); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
-
-## Long sessions: use the advisor (optional)
-For long, multi-step work, Claude Code can consult a stronger model at decision points: run `/advisor opus` (or set `advisorModel`). It is experimental, needs the Anthropic API and Claude Code feature-flag fetching (it stays off if `DISABLE_TELEMETRY` is set), and its tokens are billed at the advisor model's rate. See https://code.claude.com/docs/en/advisor.
-
-## Job budgets
-Long jobs should carry a line in the job file's STATUS block such as `BUDGET: max 5 USD or 3 rounds; stop and report when reached`. `memory-lint` warns when an active job has none.
-
 ## Two names, one system
-The plugin is `persistent-memory`; the skill inside is `persistent-memory-system`. If you installed the old standalone skill too, **disable one of them** to avoid duplicates.
+
+The plugin is `persistent-memory`; the skill inside is `persistent-memory-system`. If you installed the old standalone skill too, **disable one of them** to avoid duplicates. The install commands above use the marketplace `msamkari/samkari-plugins`; this repository holds the plugin source.
+
+## Known limitations
+
+- Hooks and agents run only in Claude Code and Cowork, not in claude.ai chat.
+- Windows: the hook is Node (`.mjs`), no bash needed; **not yet tested on Windows**.
+- `memory-status`, `memory-lint`, `memory-doctor`, `memory-activity` and the hooks need Node.js.
+- The skill needs a connected storage (a cloud connector or a local folder Claude can read and write); without one it cannot keep memory between sessions.
 
 ## Common errors
 - *Plugin rejected on upload:* make sure the zip has the plugin folder at its top level and contains no `bin/` folder.
 - *Hook prints nothing:* `memory_dir` is unset or the folder does not exist; this is by design.
 - *No update after a new release:* the `version` in `plugin.json` must change on every release.
-- Windows: the hook is Node (`.mjs`), no bash needed; **not yet tested on Windows**.
 
 ## Safety
 The session hook is read-only; the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
-## License
-Apache-2.0 (see `LICENSE` and `NOTICE`; copyright 2026 Mohammad Samkari). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.
+## Tests
+`node --test tests/*.test.mjs` (41 checks); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
-## Start-of-session read cost (v1.1.0)
+## Features by version
+
+### Start-of-session read cost (added in v1.1.0)
 
 The session-start hook and `memory-status` now show how big the files read in full at every session start are, with an estimate of their token cost. A "Suggestion only" line appears when one file passes 60 KB or the folder passes 150 KB (override with `PMS_WARN_FILE_KB` / `PMS_WARN_TOTAL_KB`). It never changes your files and never changes how memory is read. The token figure is an estimate from byte counts (about 0.29 tokens per ASCII byte and 0.48 per non-ASCII byte), usually within ~20%.
 
 Why only a suggestion: we tested replacing "read everything" with a tiered read (index plus on-demand fetch) and kept the full read. See [`docs/experiments/tiered-read-2026-10.md`](docs/experiments/tiered-read-2026-10.md).
 
-## Safe rewrite of large files (v1.2.0)
+### Safe rewrite of large files (added in v1.2.0)
 
 `scripts/dbxhash.mjs` computes the Dropbox content hash of a local file, so an upload can be verified byte for byte before it replaces a live memory file. The procedure is in [`docs/safe-rewrite.md`](docs/safe-rewrite.md).
+
+## Optional extras
+
+### Long sessions: use the advisor
+For long, multi-step work, Claude Code can consult a stronger model at decision points: run `/advisor opus` (or set `advisorModel`). It is experimental, needs the Anthropic API and Claude Code feature-flag fetching (it stays off if `DISABLE_TELEMETRY` is set), and its tokens are billed at the advisor model's rate. See https://code.claude.com/docs/en/advisor. This is a separate Claude Code feature, not part of this plugin.
+
+### Job budgets
+Long jobs should carry a line in the job file's STATUS block such as `BUDGET: max 5 USD or 3 rounds; stop and report when reached`. `memory-lint` warns when an active job has none.
+
+## License
+Apache-2.0 (see `LICENSE` and `NOTICE`; copyright 2026 Mohammad Samkari). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.
