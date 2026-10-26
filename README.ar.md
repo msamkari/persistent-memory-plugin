@@ -24,7 +24,7 @@ MyProject/
    └─ System_Previous_MDs/               <- كل نسخة مستبدَلة تنتقل هنا ولا تُحذف
 ```
 
-مثال كامل (مشروع وهمي) مع مخرجات حقيقية للأدوات في [`docs/example/`](docs/example/).
+في [`docs/example/`](docs/example/) مجلد ذاكرة **مثال وهمي** تقدر تقراه لتفهم الشكل، أو تشغّل عليه أدوات الإضافة بنفسك وتشوف المخرجات (الأوامر مكتوبة هناك). الملفات مكتوبة يدوياً كمثال، مو مولّدة بالـskill.
 
 ## البدء السريع (Claude Code)
 
@@ -33,7 +33,7 @@ MyProject/
 /plugin install persistent-memory@samkari-plugins
 ```
 
-بعدها قل لـClaude مثلاً: *"Build a persistent memory system for my project."* يسألك أسئلة إعداد قليلة (اللغة، مكان حفظ الملفات، تسمية الملفات)، ويبني الهيكل، ومن الجلسة الجاية يقرأ الملفات أول ويكمل من وين وقفت. لمعرفة حالة الذاكرة في أي وقت: `/persistent-memory:memory-status`.
+بعدها قل لـClaude مثلاً: *"Build a persistent memory system for my project."* يسألك أسئلة إعداد بسيطة (اللغة، مكان حفظ الملفات، تسمية الملفات)، ويبني الهيكل، ومن الجلسة الجاية يقرأ الملفات أول ويكمل من وين وقفت. لمعرفة حالة الذاكرة في أي وقت: `/persistent-memory:memory-status`.
 
 خطوات التثبيت لويندوز وماك ولينكس والتحديث التلقائي وحل المشكلات في [`INSTALL.md`](INSTALL.md).
 
