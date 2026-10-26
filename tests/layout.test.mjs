@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 // Every tracked top-level entry must be listed here; adding a new one is a deliberate edit of this test.
 const ALLOWED_TOP = new Set([
   ".claude-plugin", ".github", "agents", "docs", "evals", "hooks", "scripts", "skills", "tests",
-  "CHANGELOG.md", "INSTALL.md", "LICENSE", "NOTICE", "README.md", ".gitignore",
+  "CHANGELOG.md", "INSTALL.md", "LICENSE", "NOTICE", "README.md", "README.ar.md", ".gitignore",
 ]);
 const MAX_PATH = 120;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
