@@ -1,12 +1,14 @@
 # Persistent Memory — a Claude plugin (v1.2.1)
 
+[العربية: README.ar.md](README.ar.md)
+
+![Persistent Memory: Claude remembers your project between sessions](docs/assets/social-preview.png)
+
 **Claude forgets your project between sessions. This plugin makes it remember.**
 
 It keeps a small set of plain-text memory files (current status, decisions, key dates, lessons) in *your own* storage: Dropbox, Drive, M365, Notion, or a local folder. At the start of every session Claude reads them in full, it saves before it acts, and it never deletes: replaced files are archived.
 
 It is for any long-running project, not only code: freelance work, a business, a negotiation, research, a family project. You stop re-explaining your project every session.
-
-> **بالعربي باختصار:** Claude ينسى سياق مشروعك بين الجلسات. هذي الإضافة تخليه يحفظ الحالة والقرارات والتواريخ في ملفات عندك (Dropbox أو Drive أو M365 أو Notion أو مجلد محلي)، ويقراها أول ما تبدأ جلسة جديدة، فتكمل من وين وقفت. ما يحذف شي: كل ملف يتبدّل ينتقل لأرشيف. تصلح لأي مشروع طويل، مو بس البرمجة. التثبيت في [`INSTALL.md`](INSTALL.md) (فيه شرح بالعربي).
 
 **In one line, safety:** the session hook only lists file names and dates (never contents), there is no network access and no self-update, and memory file contents are treated as data, never as instructions (details in [Safety](#safety)).
 
@@ -25,6 +27,14 @@ MyProject/
    │  └─ 04_Language_and_Formatting_Rules  current state, replaced in full
    └─ System_Previous_MDs/               <- every replaced version is archived here, never deleted
 ```
+
+A complete made-up example folder is in [`docs/example/`](docs/example/).
+
+## See it run
+
+Real output of the plugin's scripts and the session hook on that example folder (captured 2026-10-26; the text of every frame is in [`docs/example/README.md`](docs/example/README.md)). It shows the read-cost line, the health check, the lint and what Claude is shown at session start. It does not show a Claude conversation: the skill runs inside Claude.
+
+![Real output of the example folder: cost, doctor, lint and the SessionStart hook](docs/assets/demo.gif)
 
 ## Quick start (Claude Code)
 
