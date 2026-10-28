@@ -10,6 +10,9 @@
 //   node continuity-inventory.mjs --config FILE   JSON file whose keys replace the CONFIG keys below
 // Exit code: 0 all checks pass, 1 at least one check failed, 2 usage or setup error.
 //
+// Manual sections: manifest.links and manifest.live are edited BY HAND. --init keeps them but never fills
+// them in. Companions are checked by name only (use {version} in their pattern to tie them to the version).
+//
 // WARNING: --init accepts whatever is on disk as correct, even a mistake. Run it only after a manual
 // check, and prove the script can fail (see mutation-testing.md): a pass right after --init proves nothing.
 //
@@ -113,7 +116,8 @@ function check(manifest) {
   const res = [];
   const add = (ok, name, detail = "") => res.push({ ok: Boolean(ok), name, detail });
   const now = scan();
-  const forbidden = CONFIG.forbiddenNamePart.toLowerCase();
+  const forbidden = CONFIG.forbiddenNamePart.toLowerCase();   // matched as a whole word: finalize does not trigger it
+  if (CONFIG.deliverables.length === 0 && CONFIG.requiredFiles.length === 0) add(false, "nothing configured: deliverables and requiredFiles are both empty", "fill the CONFIG section");
 
   for (const d of CONFIG.deliverables) {
     const cur = currentName(d), n = now.items[d.key], m = manifest.items?.[d.key];
@@ -121,7 +125,7 @@ function check(manifest) {
     const re = new RegExp(`^${escapeRe(d.stem)}_v\\d+\\.${escapeRe(d.ext)}$`);
     const versioned = n.files.filter((f) => re.test(f));
     add(versioned.length === 1 && versioned[0] === cur, `${d.key}: only one versioned file outside ${CONFIG.archiveDir}`, `found: ${JSON.stringify(versioned)}`);
-    add(!n.files.some((f) => f.toLowerCase().includes(forbidden)), `${d.key}: no "${CONFIG.forbiddenNamePart}" name outside ${CONFIG.archiveDir}`);
+    add(!n.files.some((f) => new RegExp(`(^|[^a-z0-9])${escapeRe(forbidden)}([^a-z0-9]|$)`, "i").test(f)), `${d.key}: no "${CONFIG.forbiddenNamePart}" name outside ${CONFIG.archiveDir}`);
     for (const c of d.companions ?? []) add(isFile(join(abs(d.dir), fill(c, d))), `${d.key}: companion ${fill(c, d)}`);
     if (!m) add(false, `${d.key}: not in the manifest`, "run --init after a manual check");
     else {
@@ -152,7 +156,7 @@ function check(manifest) {
   for (const [plat, info] of Object.entries(verified)) {
     const t = Date.parse(info?.at);
     const age = Number.isNaN(t) ? Infinity : (Date.now() - t) / 86400000;
-    add(age <= CONFIG.maxLiveAgeDays, `live state (${plat}) verified within ${CONFIG.maxLiveAgeDays} days`, `last: ${info?.at} ${info?.how ?? ""}`);
+    add(age >= -0.01 && age <= CONFIG.maxLiveAgeDays, `live state (${plat}) verified within ${CONFIG.maxLiveAgeDays} days (not in the future)`, `last: ${info?.at} ${info?.how ?? ""}`);
   }
   if (CONFIG.requireLive && Object.keys(verified).length === 0) add(false, "live state: no per-platform verification dates");
 

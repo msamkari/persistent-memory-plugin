@@ -134,6 +134,10 @@ const faults = [
     (d) => { const f = path.join(d, "Jobs/job.md"); const b = fs.readFileSync(f); fs.writeFileSync(f, "## STATUS\n"); return () => fs.writeFileSync(f, b); }],
   ["link missing from its file", /Jobs\/links\.md contains \{link:pdf\}/,
     (d) => { const f = path.join(d, "Jobs/links.md"); const b = fs.readFileSync(f); fs.writeFileSync(f, "none\n"); return () => fs.writeFileSync(f, b); }],
+  ["delete a required file", /required file Deliverables\/Main\/script\.md/,
+    (d) => { const f = path.join(d, "Deliverables/Main/script.md"); const b = fs.readFileSync(f); fs.rmSync(f); return () => fs.writeFileSync(f, b); }],
+  ["future verification date", /live state \(platformA\)/,
+    (d) => { setLive(d, -5); return () => setLive(d, 0); }],
   ["stale live verification", /live state \(platformA\)/,
     (d) => { setLive(d, 10); return () => setLive(d, 0); }],
   ["CLAUDE.md no longer points to HANDOVER", /entry point CLAUDE\.md contains HANDOVER/,
@@ -153,6 +157,17 @@ for (const [name, expect, apply] of faults) {
     assert.equal(ok.status, 0, ok.stdout);
   });
 }
+
+test("inventory: a name containing finalize is not a FINAL name; empty config is flagged", () => {
+  const d = makeProject();
+  run(d, "--init"); setLive(d, 0);
+  fs.writeFileSync(path.join(d, "Deliverables/Main/finalize-notes.txt"), "x");
+  assert.equal(run(d).status, 0);
+  fs.writeFileSync(path.join(d, "empty.json"), "{\"deliverables\":[],\"requiredFiles\":[],\"mentions\":[],\"entryPoints\":[]}");
+  const r = spawnSync(process.execPath, [inv, "--root", d, "--config", path.join(d, "empty.json")], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /nothing configured/);
+});
 
 test("inventory: sha helper sanity (guards the test itself)", () => {
   assert.equal(sh("a"), "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb");

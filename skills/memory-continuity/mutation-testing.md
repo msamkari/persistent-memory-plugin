@@ -15,10 +15,13 @@ Faults to try with `continuity-inventory.mjs`:
 | Copy it as `<stem>_v9.<ext>` into the same folder | `only one versioned file` |
 | Add a file whose name contains FINAL | `no "FINAL" name` |
 | Delete a companion file | `companion ...` |
+| Delete a required file | `required file ...` |
+| Link missing from the file that must contain it | `contains {link:...}` |
 | Remove the current file name from the job file | `contains <name>` |
 | Set one platform's `live.verified.<p>.at` to 10 days ago | `live state (<p>) verified within` |
+| Set it to a future date | `live state (<p>) verified within` |
 | Remove the HANDOVER line from CLAUDE.md | `entry point CLAUDE.md contains HANDOVER` |
 
-The plugin's own test `tests/continuity.test.mjs` runs this procedure automatically against the template, in a temporary folder. Keep the same habit for your project's copy: record in the job log the date you ran the mutation test and how many faults were caught out of how many tried (for example "8 of 8").
+The plugin's own test `tests/continuity.test.mjs` runs this procedure automatically against the template, in a temporary folder. Keep the same habit for your project's copy: record in the job log the date you ran the mutation test and how many faults were caught out of how many tried (for example "11 of 11").
 
 Do not run `--init` to make a failing check pass. First decide whether the disk or the manifest is right.

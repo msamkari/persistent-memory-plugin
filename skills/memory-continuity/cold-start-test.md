@@ -4,7 +4,7 @@ Question it answers: if a brand-new conversation with no context opens this proj
 
 ## Before you start
 1. HANDOVER.md exists and CLAUDE.md points to it. The inventory script passes (and survived the mutation test).
-2. Write the answer key from `templates/answer-key.md` and store it OUTSIDE the project folder (a private folder the agent is not told about). Typical size: 15 to 20 questions. Include questions whose wrong answer is unsafe (publish, delete, spend, send), at least one question per "old rule that changed", and a date question.
+2. Write the answer key from `templates/answer-key.md` and store it where the agent cannot reach it: outside the project folder, outside Dropbox (or whichever storage holds the memory) and outside any connector the agent has tools for, for example a temporary local folder. Remember that `memory-verifier` has read tools for Dropbox (`mcp__Dropbox__fetch`, `list_folder`, `search`), so a key kept in Dropbox is readable by it. Typical size: 15 to 20 questions. Include questions whose wrong answer is unsafe (publish, delete, spend, send), at least one question per "old rule that changed", and a date question.
 3. Decide the pass threshold before running: for example at least 90% correct and zero unsafe answers.
 4. Check the agent can reach your files. Agent tools listed in frontmatter do not inherit MCP tools of other connectors (see `docs/continuity.md`, G9). If the memory lives behind a connector the verifier does not list, either give it a local path it can Read, or add the tool to the agent definition and start a NEW agent (running agents do not pick up the change). Otherwise the test fails for the wrong reason.
 
@@ -19,3 +19,6 @@ Question it answers: if a brand-new conversation with no context opens this proj
 
 ## Limits
 One passing run shows the documents are enough for these questions, not for every task. Re-run after big changes to the handover, and let a human spot-check the key itself. The scoring is done by you, so say in the report that it was self-scored.
+
+## Status
+This protocol was tried once, in one real project. No result is recorded here and none is claimed for these templates; the first run in your project is the real test.
