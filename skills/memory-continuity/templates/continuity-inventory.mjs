@@ -58,6 +58,7 @@ const CONFIG = {
 
   // Live state of things the disk cannot show (platforms, schedules). Stored in manifest.live.verified as
   //   { "<platform>": { "at": "2026-10-28T09:00:00", "how": "what was checked and with which tool" } }
+  // A time without a zone is read as local time. A date in the future fails.
   maxLiveAgeDays: 3,
   requireLive: false,                // true: failure when no platform has a verification date
 

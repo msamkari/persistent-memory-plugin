@@ -100,11 +100,13 @@ function makeProject() {
   return d;
 }
 const run = (d, ...a) => spawnSync(process.execPath, [inv, "--root", d, "--config", path.join(d, "cfg.json"), ...a], { encoding: "utf8" });
+// Timestamps without a zone are read as local time, so write local time (not UTC).
+const localIso = (ms) => { const x = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return x.toISOString().slice(0, 19); };
 const setLive = (d, daysAgo) => {
   const mp = path.join(d, "Jobs", "state_manifest.json");
   const m = JSON.parse(fs.readFileSync(mp, "utf8"));
   m.links = { pdf: "https://example.test/pdf/abc?dl=0" };
-  m.live = { verified: { platformA: { at: new Date(Date.now() - daysAgo * 86400000).toISOString().slice(0, 19), how: "test" } } };
+  m.live = { verified: { platformA: { at: localIso(Date.now() - daysAgo * 86400000), how: "test" } } };
   fs.writeFileSync(mp, JSON.stringify(m));
 };
 
