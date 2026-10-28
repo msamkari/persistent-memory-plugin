@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.0 (2026-10-28)
+- The SessionStart hook now also names the project hand-over file: if `HANDOVER.md` (project root) or `MDs/HANDOVER.md` exists, one line with its path tells a new chat to read it first. Only the path is injected, never the file text; the line is kept when the index is trimmed. It works even when no memory folder is set. Without a hand-over file nothing changes.
+- Added `tests/handover-hook.test.mjs` (6 tests, in CI); 67 tests in total.
+
 ## 1.3.0 (2026-10-28)
 - Added skill `memory-continuity` (additive, no behavior change): HANDOVER.md and CLAUDE.md pointer templates, a configurable Node inventory/manifest template, a mutation-test guide, and a cold-start test protocol that uses the existing read-only `memory-verifier` (no new agent).
 - Added `docs/continuity.md`: proposal archive (`_proposals` to `_merged` with INDEX and hash), `vN` version names, closing overtaken scheduled tasks, agent tools do not inherit MCP, Windows hints.

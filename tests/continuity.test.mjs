@@ -66,9 +66,9 @@ test("main persistent-memory-system SKILL.md is unchanged", () => {
   assert.equal(h, MAIN_SKILL_SHA256);
 });
 
-test("version 1.3.0 is the same in plugin.json, both READMEs and the changelog", () => {
+test("the version is the same in plugin.json, both READMEs and the changelog", () => {
   const v = JSON.parse(read(".claude-plugin", "plugin.json")).version;
-  assert.equal(v, "1.3.0");
+  assert.match(v, /^[0-9]+[.][0-9]+[.][0-9]+$/);
   assert.match(read("README.md"), new RegExp(`^# .*\\(v${v.replaceAll(".", "\\.")}\\)`, "m"));
   assert.match(read("README.ar.md"), new RegExp(`^# .*\\(v${v.replaceAll(".", "\\.")}\\)`, "m"));
   assert.match(read("CHANGELOG.md"), new RegExp(`^## ${v.replaceAll(".", "\\.")} `, "m"));
