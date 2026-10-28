@@ -13,12 +13,15 @@ Additive notes that go with the skill `memory-continuity` (HANDOVER file, invent
 | G7 closing overtaken scheduled tasks | below |
 | G8 "old rules that changed" | `HANDOVER.md` template section 8 and the skill |
 | G9 agent tools and MCP | below |
-| G10 advisor budget | README, "Long sessions: use the advisor" |
+| G10 advisor budget | README, section "Advisor budget" |
 | G11 Windows hints | below |
 | G12 project lessons vs system lessons | skill `memory-continuity`, "Where lessons go" |
 
+## Status of the cold-start protocol
+The protocol was tried once, in one real project (two attempts: a first run with misses, fixed in the documents, then a fresh agent). That result belongs to that project and is not recorded here; no result is claimed for these templates. Treat the first run in your own project as the real test.
+
 ## G5. Proposal archive: `_proposals` then `_merged`
-A proposed memory change is written as a file in `Jobs/_proposals/` instead of editing `System_Current_MD` directly. Whoever merges it (the memory-keeper role, or you) follows these steps:
+A proposed memory change is written as a file in `Jobs/_proposals/` instead of editing `System_Current_MD` directly. Whoever merges it (you, or an assistant or agent you trust with that job) follows these steps:
 1. Merge the content into the memory files, archiving the replaced file first as usual.
 2. Compute the proposal's hash: `node scripts/dbxhash.mjs Jobs/_proposals/<file>` (any stable hash such as SHA-256 works; use one kind consistently and say which in the INDEX header).
 3. Move (do not copy, do not delete) the proposal to `Jobs/_merged/<file>`.
