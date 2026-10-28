@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 (2026-10-28)
+- Added skill `memory-continuity` (additive, no behavior change): HANDOVER.md and CLAUDE.md pointer templates, a configurable Node inventory/manifest template, a mutation-test guide, and a cold-start test protocol that uses the existing read-only `memory-verifier` (no new agent).
+- Added `docs/continuity.md`: proposal archive (`_proposals` to `_merged` with INDEX and hash), `vN` version names, closing overtaken scheduled tasks, agent tools do not inherit MCP, Windows hints.
+- README: advisor budget line. Added `tests/continuity.test.mjs` (also pins the main skill by hash) and added it to CI.
+- Not changed: `skills/persistent-memory-system/SKILL.md`, hooks, existing scripts. Pointing the SessionStart hook at HANDOVER.md is a possible later change.
+
 ## 1.2.1 (2026-10-23)
 - Removed a stray `L/` folder (eight scratch files from a review test) that was committed into 1.1.0 by mistake. No plugin behavior changed.
 - Added `tests/layout.test.mjs` (run in CI): fails if a tracked top-level entry is not on the known list, or a tracked path is over 120 characters.
