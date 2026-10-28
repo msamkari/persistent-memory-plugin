@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.3.0)
+# Persistent Memory — a Claude plugin (v1.4.0)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -58,9 +58,9 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `memory-pending` | Claude Code / Cowork | Standard format for held (pending) items: quote, who said it, confidence, reason held. Third-party text is never recorded as your own words |
 | Skill `memory-activity` | Claude Code / Cowork (needs Node) | Append-only audit log (`Activity_Log/activity.jsonl`): what was done and under which approval. Not part of the mandatory session read |
 | Skill `notebooklm-reference` | Claude Code / Cowork | **Optional.** Guided, approval-gated setup for querying large non-sensitive reference documents through Google NotebookLM. Never for memory files (privacy warning inside) |
-| Skill `memory-continuity` | Claude Code / Cowork (the inventory template needs Node) | Optional hand-over layer: a HANDOVER.md entry file and CLAUDE.md pointer, a configurable inventory/manifest script, a mutation test for check scripts, and a cold-start test that uses the read-only `memory-verifier`. Templates only, not wired into the hooks. See [`docs/continuity.md`](docs/continuity.md) |
+| Skill `memory-continuity` | Claude Code / Cowork (the inventory template needs Node) | Optional hand-over layer: a HANDOVER.md entry file and CLAUDE.md pointer, a configurable inventory/manifest script, a mutation test for check scripts, and a cold-start test that uses the read-only `memory-verifier`. The SessionStart hook points a new chat to its HANDOVER.md. See [`docs/continuity.md`](docs/continuity.md) |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
-| SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents). Silent if the folder is not set |
+| SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. Silent if the folder is not set and there is no HANDOVER.md |
 | PreToolUse approval gate | Claude Code / Cowork only | Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
 
 Hooks and agents are ignored in claude.ai chat; the skill works everywhere.
@@ -109,7 +109,7 @@ Why only a suggestion: we tested replacing "read everything" with a tiered read 
 
 ### Continuity: hand-over between conversations (added in v1.3.0)
 
-The skill `memory-continuity` helps a brand-new conversation continue without losing work: templates for `HANDOVER.md` and the `CLAUDE.md` pointer, a configurable inventory script (`skills/memory-continuity/templates/continuity-inventory.mjs`) that compares disk with a manifest, a mutation test that proves a check script can fail, and a cold-start test run by the existing read-only `memory-verifier` against an answer key kept outside the project. Conventions for proposal archiving, version names, scheduled tasks, agent tools and Windows hints are in [`docs/continuity.md`](docs/continuity.md). Nothing here changes how memory is read or written, and the hooks are untouched.
+The skill `memory-continuity` helps a brand-new conversation continue without losing work: templates for `HANDOVER.md` and the `CLAUDE.md` pointer, a configurable inventory script (`skills/memory-continuity/templates/continuity-inventory.mjs`) that compares disk with a manifest, a mutation test that proves a check script can fail, and a cold-start test run by the existing read-only `memory-verifier` against an answer key kept outside the project. Conventions for proposal archiving, version names, scheduled tasks, agent tools and Windows hints are in [`docs/continuity.md`](docs/continuity.md). Nothing here changes how memory is read or written; the only hook change is one line that names the HANDOVER.md path (never its text).
 
 ## Optional extras
 
