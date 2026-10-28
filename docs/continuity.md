@@ -1,6 +1,6 @@
 # Continuity: conventions around the memory system
 
-Additive notes that go with the skill `memory-continuity` (HANDOVER file, inventory script, cold-start test). Nothing here changes how the memory files are read, written or archived, and none of it is wired into the hooks. Items are numbered G1 to G12 after the lessons list they come from.
+Additive notes that go with the skill `memory-continuity` (HANDOVER file, inventory script, cold-start test). Nothing here changes how the memory files are read, written or archived, and the only hook link is one line naming the HANDOVER.md path (never its text). Items are numbered G1 to G12 after the lessons list they come from.
 
 | Item | Where |
 |---|---|
