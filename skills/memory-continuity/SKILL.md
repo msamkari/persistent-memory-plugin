@@ -2,7 +2,7 @@
 name: memory-continuity
 description: "Use when the user wants a HANDOVER.md or hand-over file so a brand-new chat can pick up a project, asks whether a new conversation will lose the work, or wants a continuity check or cold-start test. Sets up the HANDOVER.md entry file, a CLAUDE.md pointer, an inventory script that compares disk with expectations, and a cold-start test with a read-only agent. Triggers: handover, HANDOVER.md, hand-over file, new chat lose work, continuity check, cold-start test, ملف تسليم، تضيع المحادثة الجديدة الشغل، فحص الاستمرارية. Not for building or updating the memory files themselves (use persistent-memory-system)."
 ---
-Additive layer. It changes nothing in how memory is read, written or archived, and nothing here is wired into the hooks. Everything is a template you copy into the user's project and adapt.
+Additive layer. It changes nothing in how memory is read, written or archived, and the SessionStart hook only names the HANDOVER.md path (never its text). Everything is a template you copy into the user's project and adapt.
 
 Resources in this folder (read the one you need, not all):
 - `templates/HANDOVER.md`: entry file a fresh conversation reads first (G1).

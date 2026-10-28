@@ -1,4 +1,4 @@
-# Persistent Memory — إضافة لـClaude (v1.3.0)
+# Persistent Memory — إضافة لـClaude (v1.4.0)
 
 [English README](README.md) · [دليل التثبيت (عربي وإنجليزي)](INSTALL.md)
 
@@ -40,7 +40,7 @@ MyProject/
 ## وش تحتوي
 
 - **Skill `persistent-memory-system`:** النظام الكامل (يشتغل في claude.ai وCowork وClaude Code).
-- **Skills للصيانة** (Claude Code وCowork): `memory-status` (حالة قراءة فقط وتقدير تكلفة القراءة في بداية الجلسة)، و`memory-lint` (فحص ترقيم المدخلات وروابط الأرشيف)، و`memory-doctor` (فحص صحة قراءة فقط)، و`memory-pending` (صيغة موحدة للبنود المعلّقة)، و`memory-continuity` (طبقة تسليم اختيارية: قالب HANDOVER.md ومؤشّر CLAUDE.md وسكربت جرد قابل للضبط واختبار بدء بارد بالوكيل `memory-verifier`؛ قوالب فقط وغير موصولة بالـhooks)، و`memory-activity` (سجل تدقيق يُضاف إليه فقط).
+- **Skills للصيانة** (Claude Code وCowork): `memory-status` (حالة قراءة فقط وتقدير تكلفة القراءة في بداية الجلسة)، و`memory-lint` (فحص ترقيم المدخلات وروابط الأرشيف)، و`memory-doctor` (فحص صحة قراءة فقط)، و`memory-pending` (صيغة موحدة للبنود المعلّقة)، و`memory-continuity` (طبقة تسليم اختيارية: قالب HANDOVER.md ومؤشّر CLAUDE.md وسكربت جرد قابل للضبط واختبار بدء بارد بالوكيل `memory-verifier`؛ والـhook يذكر مسار HANDOVER.md فقط بدون محتواه)، و`memory-activity` (سجل تدقيق يُضاف إليه فقط).
 - **اختياري:** `notebooklm-reference` للاستعلام عن وثائق مرجعية كبيرة وغير حساسة عبر NotebookLM (لا يُستخدم أبداً لملفات الذاكرة).
 - **Agent `memory-verifier`:** تدقيق قراءة فقط: هل ملف الحالة يطابق السجل؟
 - **Hook عند بداية الجلسة** (Claude Code وCowork فقط): يعرض فهرساً مختصراً بأسماء الملفات وتواريخها.
