@@ -14,7 +14,7 @@ try {
   if (input.stop_hook_active) allow();                       // second pass: never loop
   const root = process.env.CLAUDE_PROJECT_DIR || input.cwd || process.cwd();
   const cfg = loadConfig(root);
-  if (!cfg) allow();                                         // project did not opt in
+  if (!cfg || cfg.disabled) allow();                         // project did not opt in, or switched it off
   const tp = input.transcript_path || "";
   if (!tp || isScheduledTask(tp)) allow();                   // scheduled runs are never stopped
   const rep = staleReport(root, cfg, sessionStartMs(tp));

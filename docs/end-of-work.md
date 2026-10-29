@@ -18,7 +18,21 @@ Create `MDs/freshness.json` in the project root:
 - `work`: folders (entry ends with `/`, scanned recursively) or exact files whose change means "work happened". Required.
 - `extensions`: only for folder entries; default `[".md"]`. Exact files ignore it.
 - `skip`: extra folder names to ignore. Always skipped: `_Archive`, `_archive`, `System_Previous_MDs`, `_merged`, `_proposals`, `node_modules`, `.git`.
-- `reasonExtra`: optional text added to the message.
+- `reasonExtra`: optional text added to the message. Use it for one project-specific reminder (for example which other project's files must not be mixed with this one).
+- `disabled`: `true` keeps the config but switches the hook off for this project.
+
+You do not have to write it by hand. From the plugin folder:
+```
+node scripts/freshness.mjs init  --root <project>           # prints a suggested config, writes nothing
+node scripts/freshness.mjs init  --root <project> --write   # creates MDs/freshness.json if it does not exist (never overwrites)
+node scripts/freshness.mjs check --root <project>           # the same comparison by hand: exit 0 current, 1 stale, 2 no config
+```
+`init` needs a `HANDOVER.md` (project root or `MDs/`) and a work folder (`Jobs/` or `MDs/Templates/`); otherwise it asks you to write the file. A template is in `skills/memory-continuity/templates/freshness.json`.
+
+## One project at a time, no conflicts
+- The config lives in the project folder, so each project decides for itself. A project without it is untouched, including the memory project and this plugin's own repository.
+- The message can carry a project-specific reminder (`reasonExtra`).
+- Use **one** mechanism per project. If a project already has its own Stop hook with the same job, do not also add `MDs/freshness.json`: both would fire. Move to the plugin's config and remove the old hook entry, or set `"disabled": true` here.
 
 Write the file as UTF-8 (a BOM is tolerated). The hook reads the project root from `CLAUDE_PROJECT_DIR`, then from the session's `cwd`.
 

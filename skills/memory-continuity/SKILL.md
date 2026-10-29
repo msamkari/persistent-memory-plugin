@@ -8,6 +8,7 @@ Resources in this folder (read the one you need, not all):
 - `templates/HANDOVER.md`: entry file a fresh conversation reads first (G1).
 - `templates/CLAUDE.pointer.md`: the short CLAUDE.md block that points to it (G1).
 - `templates/continuity-inventory.mjs`: configurable inventory/manifest script, Node, read-only except its own report and manifest (G2).
+- `templates/freshness.json`: optional config for the end-of-work Stop hook (G13, step 6).
 - `mutation-testing.md`: how to prove a check script can fail (G3).
 - `cold-start-test.md` and `templates/answer-key.md`: the cold-start protocol with the existing `memory-verifier` agent (G4).
 - Wider conventions (proposal archive, version names, scheduled tasks, agent tools, Windows hints): `docs/continuity.md` in the plugin repository.
@@ -18,6 +19,7 @@ Resources in this folder (read the one you need, not all):
 3. Copy `continuity-inventory.mjs` into the project (for example `MDs/Templates/`), fill its CONFIG section, run it with `--init` ONLY after the user checked the disk by hand (init accepts whatever is on disk as correct), then run it plain. Success means every line passes.
 4. Prove the script can fail: follow `mutation-testing.md`. A pass right after `--init` proves nothing.
 5. Run the cold-start test (`cold-start-test.md`). If it fails, fix the documents, never the key, and repeat with a fresh agent.
+6. Optional, ask first: the end-of-work check (G13). A prose rule "update the project files when you finish" gets forgotten in long sessions, and a structure inventory can pass while the state files are stale. If the user wants a check, run `node <plugin>/scripts/freshness.mjs init --root <project>` (it only prints a suggestion), show it, and only after the user agrees run it with `--write` (creates `MDs/freshness.json`, never overwrites) or copy `templates/freshness.json` and adapt it. Then `node <plugin>/scripts/freshness.mjs check --root <project>` runs the same comparison by hand. The Stop hook then blocks ending a turn once when this session wrote work files and the state files are older. It is per project: another project is untouched, and `"disabled": true` switches it off. If the project already has its own Stop hook doing this job, use one mechanism, not both. Details and limits: `docs/end-of-work.md`.
 
 ## Old rules that changed (G8)
 Agent definitions, scheduled tasks and old notes are often written before the user's later decisions and keep saying the old thing ("draft only", "no public links", "two generations max"). When the cold-start test or a conflict check shows a disagreement, do not leave it: add a section "Old rules that changed" to HANDOVER.md naming each stale source and stating which rule governs now and who decided it. The newest explicit decision of the user governs; say so in that section, and note anything still forbidden.

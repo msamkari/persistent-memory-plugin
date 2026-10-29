@@ -94,7 +94,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 The session hook is read-only; the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## Tests
-`node --test tests/*.test.mjs` (85 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (91 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Features by version
 

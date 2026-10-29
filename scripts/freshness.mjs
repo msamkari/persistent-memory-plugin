@@ -25,6 +25,7 @@ export function loadConfig(root) {
     if (!Array.isArray(cfg.state) || cfg.state.length === 0 || !cfg.state.every((s) => typeof s === "string")) return null;
     if (!Array.isArray(cfg.work) || cfg.work.length === 0 || !cfg.work.every((s) => typeof s === "string")) return null;
     return {
+      disabled: cfg.disabled === true, // keeps the config but switches the hook off for this project
       state: cfg.state.map(slash),
       work: cfg.work.map(slash),
       extensions: Array.isArray(cfg.extensions) && cfg.extensions.length ? cfg.extensions.map(String) : [".md"],
@@ -132,3 +133,51 @@ export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000,
   } finally { rl.close(); }
   return found;
 }
+
+// ---- CLI: node scripts/freshness.mjs init|check [--root DIR] [--write] ----
+// init  : looks at the project and PRINTS a suggested MDs/freshness.json. Read-only unless --write, which
+//         creates the file only if it does not exist yet (never overwrites).
+// check : runs the same comparison as the Stop hook once, by hand. Exit 0 current, 1 stale, 2 no/invalid config.
+import { fileURLToPath } from "node:url";
+
+const exists = (root, rel) => { try { return fs.statSync(path.join(root, ...rel.split("/"))).isFile(); } catch { return false; } };
+const isDir = (root, rel) => { try { return fs.statSync(path.join(root, ...rel.split("/"))).isDirectory(); } catch { return false; } };
+
+export function suggestConfig(root) {
+  const handover = ["MDs/HANDOVER.md", "HANDOVER.md"].find((r) => exists(root, r));
+  if (!handover) return null; // nothing to anchor the state on
+  const manifest = ["Jobs/state_manifest.json", "state_manifest.json", "MDs/state_manifest.json"].find((r) => exists(root, r));
+  const work = ["Jobs/", "MDs/Templates/"].filter((r) => isDir(root, r.slice(0, -1)));
+  if (work.length === 0) return null; // no obvious work-log folder: the user must name one
+  return { state: [...(manifest ? [manifest] : []), handover], work };
+}
+
+function cli() {
+  const args = process.argv.slice(2);
+  const cmd = args[0];
+  const ri = args.indexOf("--root");
+  const root = path.resolve(ri >= 0 && args[ri + 1] ? args[ri + 1] : process.cwd());
+  const cfgPath = path.join(root, ...CONFIG_REL);
+  if (cmd === "init") {
+    if (fs.existsSync(cfgPath)) { console.log(`OK ${path.join(...CONFIG_REL)} already exists; nothing to do (init never overwrites).`); return 0; }
+    const s = suggestConfig(root);
+    if (!s) { console.log("FAIL could not suggest a config: need a HANDOVER.md (root or MDs/) and a work folder (Jobs/ or MDs/Templates/). Write MDs/freshness.json by hand: see docs/end-of-work.md"); return 2; }
+    const text = JSON.stringify(s, null, 2) + "\n";
+    if (args.includes("--write")) { fs.mkdirSync(path.dirname(cfgPath), { recursive: true }); fs.writeFileSync(cfgPath, text, { encoding: "utf8", flag: "wx" }); console.log(`OK wrote ${cfgPath}`); }
+    else console.log(`Suggested ${path.join(...CONFIG_REL)} (not written; add --write to create it, then review it):\n${text}`);
+    return 0;
+  }
+  if (cmd === "check") {
+    const cfg = loadConfig(root);
+    if (!cfg) { console.log("FAIL no valid MDs/freshness.json in " + root); return 2; }
+    if (cfg.disabled) { console.log("OK disabled in the config"); return 0; }
+    const rep = staleReport(root, cfg, null);
+    if (!rep) { console.log("FAIL a state file listed in the config is missing"); return 2; }
+    if (rep.newer.length === 0) { console.log("OK state files are current"); return 0; }
+    console.log(`STALE: newer than ${rep.oldestRel}:\n` + rep.newer.map((n) => "  " + n.rel).join("\n"));
+    return 1;
+  }
+  console.log("usage: node scripts/freshness.mjs init [--root DIR] [--write] | check [--root DIR]");
+  return 2;
+}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(cli());
