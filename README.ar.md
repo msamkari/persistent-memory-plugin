@@ -1,4 +1,4 @@
-# Persistent Memory — إضافة لـClaude (v1.4.0)
+# Persistent Memory — إضافة لـClaude (v1.5.0)
 
 [English README](README.md) · [دليل التثبيت (عربي وإنجليزي)](INSTALL.md)
 
