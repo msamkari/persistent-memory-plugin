@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
       - name: Unit tests
-        run: node --test tests/doctor.test.mjs tests/lint.test.mjs tests/gate.test.mjs tests/cost.test.mjs tests/dbxhash.test.mjs tests/layout.test.mjs tests/continuity.test.mjs tests/handover-hook.test.mjs
+        run: node --test tests/doctor.test.mjs tests/lint.test.mjs tests/gate.test.mjs tests/cost.test.mjs tests/dbxhash.test.mjs tests/layout.test.mjs tests/continuity.test.mjs tests/handover-hook.test.mjs tests/end-of-work-hook.test.mjs
       - name: SessionStart hook smoke test
         shell: bash
         run: |
@@ -27,3 +27,9 @@ jobs:
       - name: Hook is silent without a folder
         shell: bash
         run: test -z "$(env -u PMS_MEMORY_DIR node hooks/session-index.mjs)"
+      - name: Stop hook is silent in a project without MDs/freshness.json
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/noconf"
+          out=$(cd "$RUNNER_TEMP/noconf" && echo '{}' | env -u CLAUDE_PROJECT_DIR node "$GITHUB_WORKSPACE/hooks/end-of-work.mjs")
+          test -z "$out"

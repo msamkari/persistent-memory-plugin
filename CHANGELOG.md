@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 (2026-10-29)
+- Added an opt-in Stop hook, `hooks/end-of-work.mjs`. It is silent in every project unless that project has `MDs/freshness.json` (state files and work files, see `docs/end-of-work.md`). When it is configured and this session wrote a work file after the state files (HANDOVER, manifest, ...) were last updated, the hook blocks ending the turn once and names the files. It never blocks twice (`stop_hook_active`), never stops scheduled-task runs, counts only files this session wrote (parsed from the transcript's tool calls, not mere mentions or reads), and fails open on any error, bad config, missing file or time bound.
+- Added `scripts/freshness.mjs` (shared logic, read-only, no network) with two commands: `init` (prints a suggested `MDs/freshness.json`; `--write` creates it only if absent, never overwrites) and `check` (the same comparison by hand, exit 0/1/2). Config key `disabled: true` switches the hook off per project.
+- Skill `memory-continuity`: new optional step 6 (ask first), template `templates/freshness.json`, and a HANDOVER template section "Keeping these files current". The main skill file is unchanged.
+- Added `tests/end-of-work-hook.test.mjs` (24 tests, in CI; each protection was checked by deliberately breaking it); 91 tests in total.
+- Why: an "update the project files when you finish" rule written only in prose was forgotten in long sessions, and a file-structure inventory said "pass" while the state files were stale.
+- Not changed: the SessionStart hook, the approval gate, the main skill `persistent-memory-system`, `memory_dir`. Without `MDs/freshness.json` nothing happens.
+
 ## 1.4.0 (2026-10-28)
 - The SessionStart hook now also names the project hand-over file: if `HANDOVER.md` (project root) or `MDs/HANDOVER.md` exists, one line with its path tells a new chat to read it first. Only the path is injected, never the file text; the line is kept when the index is trimmed. It works even when no memory folder is set. Without a hand-over file nothing changes.
 - Added `tests/handover-hook.test.mjs` (6 tests, in CI); 67 tests in total.
