@@ -28,6 +28,9 @@ The single reference is the manifest `live` section plus the STATUS block of the
 1. <item>
 2. <item>
 
+## 6b) Keeping these files current (optional end-of-work check)
+Update order after any work: the work log first, the manifest next, this file last (the check compares file times). If the project uses the plugin's end-of-work check (`MDs/freshness.json`), the Stop hook blocks ending a turn once when this session wrote work files and these state files are older. <Say here whether the project uses it, and any project-specific reminder.>
+
 ## 7) Common mistakes learned
 - <mistake and the fix>
 - `--init` on the inventory accepts whatever is on disk as correct. Run it only after a manual check.

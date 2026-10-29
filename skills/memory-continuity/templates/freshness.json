@@ -1,0 +1,8 @@
+{
+  "state": ["Jobs/state_manifest.json", "MDs/HANDOVER.md"],
+  "work": ["Jobs/", "MDs/Templates/"],
+  "extensions": [".md"],
+  "skip": ["_Archive"],
+  "reasonExtra": "Replace this text with one project-specific reminder, for example which other project's files must not be mixed with this one.",
+  "disabled": false
+}

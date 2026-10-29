@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, utimesSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -113,6 +113,42 @@ test("a large transcript is streamed within a few seconds", () => {
   const r = run(p, { transcript_path: t }); assert.equal(JSON.parse(r.stdout).decision, "block"); assert.ok(Date.now() - t0 < 6000, "took " + (Date.now() - t0));
 });
 test("hooks.json registers the Stop hook through node and the plugin root", async () => {
-  const { readFileSync } = await import("node:fs"); const h = JSON.parse(readFileSync(join(root, "hooks", "hooks.json"), "utf8"));
+  const h = JSON.parse(readFileSync(join(root, "hooks", "hooks.json"), "utf8"));
   const e = h.hooks.Stop[0].hooks[0]; assert.equal(e.command, "node"); assert.match(e.args[0], /\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/end-of-work\.mjs$/);
+});
+
+// ---- freshness.mjs CLI (init / check) and the disabled switch ----
+const cli = join(root, "scripts", "freshness.mjs");
+const runCli = (args) => spawnSync(process.execPath, [cli, ...args], { encoding: "utf8" });
+test("disabled: true keeps the config but the hook stays silent", () => {
+  const p = project({ ...CFG, disabled: true });
+  assert.equal(run(p, { transcript_path: transcript(p, [wrote(p, "Jobs/log.md")]) }).stdout, "");
+});
+test("init suggests a config from HANDOVER, manifest and Jobs/ and writes nothing without --write", () => {
+  const p = tmp("pms-init-"); put(p, "MDs/HANDOVER.md", T0); put(p, "Jobs/state_manifest.json", T0);
+  const r = runCli(["init", "--root", p]); assert.equal(r.status, 0);
+  assert.match(r.stdout, /"MDs\/HANDOVER\.md"/); assert.match(r.stdout, /"Jobs\/state_manifest\.json"/); assert.match(r.stdout, /not written/);
+  assert.equal(runCli(["check", "--root", p]).status, 2); // still no config file
+});
+test("init --write creates the file once and never overwrites", () => {
+  const p = tmp("pms-init-"); put(p, "HANDOVER.md", T0); mkdirSync(join(p, "Jobs"));
+  assert.equal(runCli(["init", "--root", p, "--write"]).status, 0);
+  const cfgFile = join(p, "MDs", "freshness.json"); writeFileSync(cfgFile, JSON.stringify({ state: ["X.md"], work: ["Y/"] }));
+  const r = runCli(["init", "--root", p, "--write"]); assert.match(r.stdout, /already exists/);
+  assert.match(JSON.stringify(JSON.parse(readFileSync(cfgFile, "utf8"))), /X\.md/); // untouched
+});
+test("init refuses to guess when there is no HANDOVER.md or no work folder", () => {
+  assert.equal(runCli(["init", "--root", tmp("pms-init-")]).status, 2);
+  const p = tmp("pms-init-"); put(p, "HANDOVER.md", T0); assert.equal(runCli(["init", "--root", p]).status, 2);
+});
+test("check: exit 0 when current, 1 and names the files when stale, 2 without a config", () => {
+  const stale = project(); const r = runCli(["check", "--root", stale]); assert.equal(r.status, 1); assert.match(r.stdout, /Jobs\/log\.md/);
+  assert.equal(runCli(["check", "--root", project(CFG, { stateT: T0 + 900, workT: T0 + 500 })]).status, 0);
+  assert.equal(runCli(["check", "--root", project(null)]).status, 2);
+});
+test("the skill template freshness.json is a valid config the hook accepts", async () => {
+  const { loadConfig } = await import("../scripts/freshness.mjs");
+  const p = tmp("pms-tpl-"); mkdirSync(join(p, "MDs"));
+  writeFileSync(join(p, "MDs", "freshness.json"), readFileSync(join(root, "skills", "memory-continuity", "templates", "freshness.json"), "utf8"));
+  const cfg = loadConfig(p); assert.ok(cfg); assert.equal(cfg.disabled, false); assert.ok(cfg.state.length >= 1 && cfg.work.length >= 1);
 });
