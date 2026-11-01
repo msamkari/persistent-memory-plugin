@@ -1,6 +1,7 @@
 ---
 name: memory-activity
-description: Show or append to the append-only activity log (Activity_Log/activity.jsonl) in the local memory folder: what was done, when, and under which approval. Use when the user says "activity log", "audit log", "what did you do and who approved it", "سجل النشاط". Not part of the mandatory session read.
+description: >-
+  Show or append to the append-only activity log (Activity_Log/activity.jsonl) in the local memory folder, which records what was done, when, and under which approval. Use when the user says "activity log", "audit log", "what did you do and who approved it", "سجل النشاط". Not part of the mandatory session read.
 disable-model-invocation: true
 allowed-tools: Bash(node:*)
 ---
