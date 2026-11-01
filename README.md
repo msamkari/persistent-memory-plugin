@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.5.0)
+# Persistent Memory — a Claude plugin (v1.6.0)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -57,7 +57,7 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `memory-doctor` | Claude Code / Cowork (needs Node) | One read-only health check: missing/empty files, sync-conflict copies, secrets, text that tries to instruct the assistant. Fails closed |
 | Skill `memory-pending` | Claude Code / Cowork | Standard format for held (pending) items: quote, who said it, confidence, reason held. Third-party text is never recorded as your own words |
 | Skill `memory-activity` | Claude Code / Cowork (needs Node) | Append-only audit log (`Activity_Log/activity.jsonl`): what was done and under which approval. Not part of the mandatory session read |
-| Skill `notebooklm-reference` | Claude Code / Cowork | **Optional.** Guided, approval-gated setup for querying large non-sensitive reference documents through Google NotebookLM. Never for memory files (privacy warning inside) |
+| Skill `notebooklm-reference` | Claude Code / Cowork | **Optional guide, not a connector.** There is no official Claude connector for a personal NotebookLM account. The skill starts with a safe manual path for large non-sensitive documents and only then explains optional, unofficial third-party tools, each step approval-gated. Never for memory files (privacy warning inside) |
 | Skill `memory-continuity` | Claude Code / Cowork (the inventory template needs Node) | Optional hand-over layer: a HANDOVER.md entry file and CLAUDE.md pointer, a configurable inventory/manifest script, a mutation test for check scripts, and a cold-start test that uses the read-only `memory-verifier`. The SessionStart hook points a new chat to its HANDOVER.md. See [`docs/continuity.md`](docs/continuity.md) |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
 | SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. Silent if the folder is not set and there is no HANDOVER.md |
@@ -65,6 +65,18 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | PreToolUse approval gate | Claude Code / Cowork only | Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
 
 Hooks and agents are ignored in claude.ai chat; the skill works everywhere.
+
+## What runs on your computer
+
+When you install this plugin, Claude shows a notice such as "includes components that run code". That notice is standard for any plugin that contains hooks; it is not specific to this plugin. Here is exactly what the code does, so you can decide:
+
+| Hook | When it runs | What it reads | What it writes | Network |
+|---|---|---|---|---|
+| SessionStart | start or resume of a session | file names and dates in your memory folder (if you set one) and the path of a `HANDOVER.md` if present; never file contents | nothing | none |
+| Stop (opt-in) | when Claude finishes a reply | only in a project that has `MDs/freshness.json`: file times and this session's transcript | nothing; it can ask Claude once to update your state files | none |
+| PreToolUse (Bash) | before a shell command | the text of each shell command; it acts only on `git commit`/`git tag`, `gh pr` and `git push` | only when it blocks or asks, and only if a memory folder is set: one line appended to `Activity_Log/activity.jsonl`; it never edits or deletes anything else | none |
+
+All hooks are plain Node.js scripts in `hooks/` that you can read before installing. They do not install anything, update themselves, or send data anywhere. The optional skill `notebooklm-reference` installs nothing by itself; any third-party tool it discusses is installed only after you say yes in chat.
 
 ## Install elsewhere
 

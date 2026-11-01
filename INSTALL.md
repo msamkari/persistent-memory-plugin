@@ -139,6 +139,8 @@ Type these inside Claude Code (not in PowerShell/bash), one at a time:
   اختر **Install for you (user scope)** لتتوفر الإضافة في كل المجلدات.
 - **Memory folder** (plugin option): the local folder that holds your `Persistent_Memory_System` files, for example a synced Dropbox folder such as `C:\Users\<you>\Dropbox\Persistent_Memory_System`. It is **optional**: it is only used by the session-start index hook. Leave it empty if unsure and press **Save configuration**; you can change it later from `/plugin` → Installed → persistent-memory → Configure options.
   حقل **Memory folder** اختياري، ويُستخدم فقط لفهرس بداية الجلسة. اتركه فارغاً إن لم تكن متأكداً، وغيّره لاحقاً من `/plugin` ← Installed ← persistent-memory ← Configure options.
+- **A notice "includes components that run code" may appear.** It is standard for any plugin that has hooks. The plugin's hooks are small Node.js scripts that read file names, dates and command text, make no network calls, and install nothing. The full table is in the README, section "What runs on your computer". Press Cancel if you are not comfortable; the main skill can also be used on its own by uploading it to claude.ai (README, "Install elsewhere").
+  قد تظهر رسالة "includes components that run code". هي رسالة عامة لأي إضافة فيها hooks. جدول ما تفعله الـhooks بالتفصيل في README، قسم "ماذا يعمل على جهازك". اضغط Cancel إن لم تكن مرتاحاً؛ ويمكن استخدام المهارة الأساسية وحدها برفعها إلى claude.ai (README، "Install elsewhere").
 
 ---
 
