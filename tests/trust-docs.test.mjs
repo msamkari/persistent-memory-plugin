@@ -85,3 +85,26 @@ test("version is the same in plugin.json, both README titles and the top CHANGEL
   assert.match(read("README.ar.md").split("\n")[0], new RegExp(`\\(v${v.replace(/\./g, "\\.")}\\)`));
   assert.match(read("CHANGELOG.md").split("\n").find((l) => l.startsWith("## ")), new RegExp(`^## ${v.replace(/\./g, "\\.")} `));
 });
+
+// ---- the Arabic README must keep the same structure and facts as the English one ----
+const links = (t) => [...t.matchAll(/\]\(((?:docs|scripts|skills|hooks)\/[^)#\s]+|INSTALL\.md|README(?:\.ar)?\.md)\)/g)].map((m) => m[1]).sort();
+test("README.ar.md has the same sections as README.md (count of ## and ### headings)", () => {
+  const count = (t, re) => (t.match(re) || []).length;
+  const en = read("README.md"), ar = read("README.ar.md");
+  assert.equal(count(ar, /^## /gm), count(en, /^## /gm), "different number of ## sections");
+  assert.equal(count(ar, /^### /gm), count(en, /^### /gm), "different number of ### sections");
+});
+test("README.ar.md links the same docs, scripts and images as README.md and names every skill and hook", () => {
+  const en = read("README.md"), ar = read("README.ar.md");
+  const only = (a, b) => a.filter((x) => !b.includes(x));
+  const norm = (l) => l.filter((x) => !/^README(\.ar)?\.md$/.test(x));
+  assert.deepEqual(only(norm(links(en)), links(ar)), [], "linked in English but not in Arabic");
+  assert.deepEqual(only(norm(links(ar)), links(en)), [], "linked in Arabic but not in English");
+  for (const d of readdirSync(join(root, "skills"))) assert.ok(ar.includes(d), `README.ar.md does not mention skill ${d}`);
+  for (const ev of hookEvents) assert.ok(ar.includes(ev), `README.ar.md does not mention ${ev}`);
+  for (const img of en.match(/docs\/assets\/[\w.-]+/g)) assert.ok(ar.includes(img), `README.ar.md lacks image ${img}`);
+});
+test("both READMEs state the same test count as the suite really has", () => {
+  const n = (t) => (t.match(/\((\d+) (?:checks|فحصاً)/) || [])[1];
+  assert.equal(n(read("README.ar.md")), n(read("README.md")));
+});
