@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.6.0)
+# Persistent Memory — a Claude plugin (v1.6.1)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -61,7 +61,7 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `memory-continuity` | Claude Code / Cowork (the inventory template needs Node) | Optional hand-over layer: a HANDOVER.md entry file and CLAUDE.md pointer, a configurable inventory/manifest script, a mutation test for check scripts, and a cold-start test that uses the read-only `memory-verifier`. The SessionStart hook points a new chat to its HANDOVER.md. See [`docs/continuity.md`](docs/continuity.md) |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
 | SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. Silent if the folder is not set and there is no HANDOVER.md |
-| Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
+| Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once (in every turn) when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
 | PreToolUse approval gate | Claude Code / Cowork only | Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
 
 Hooks and agents are ignored in claude.ai chat; the skill works everywhere.
@@ -73,7 +73,7 @@ When you install this plugin, Claude shows a notice such as "includes components
 | Hook | When it runs | What it reads | What it writes | Network |
 |---|---|---|---|---|
 | SessionStart | start or resume of a session | file names and dates in your memory folder (if you set one) and the path of a `HANDOVER.md` if present; never file contents | nothing | none |
-| Stop (opt-in) | when Claude finishes a reply | only in a project that has `MDs/freshness.json`: file times and this session's transcript | nothing; it can ask Claude once to update your state files | none |
+| Stop (opt-in) | when Claude finishes a reply | only in a project that has `MDs/freshness.json`: file times and this session's transcript | nothing; it can ask Claude once (in every turn) to update your state files | none |
 | PreToolUse (Bash) | before a shell command | the text of each shell command; it acts only on `git commit`/`git tag`, `gh pr` and `git push` | only when it blocks or asks, and only if a memory folder is set: one line appended to `Activity_Log/activity.jsonl`; it never edits or deletes anything else | none |
 
 All hooks are plain Node.js scripts in `hooks/` that you can read before installing. They do not install anything, update themselves, or send data anywhere. The optional skill `notebooklm-reference` installs nothing by itself; any third-party tool it discusses is installed only after you say yes in chat.
@@ -93,8 +93,9 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 ## Known limitations
 
 - Hooks and agents run only in Claude Code and Cowork, not in claude.ai chat.
-- Windows: the hook is Node (`.mjs`), no bash needed. The test suite passes on Windows in CI, but **the hook has not yet been tried in a real Claude Code session on Windows**.
+- Windows: the hook is Node (`.mjs`), no bash needed. The test suite passes on Windows in CI, and the opt-in Stop hook was tried in real Claude Code sessions on Windows (four cases). The SessionStart hook was seen working in the same sessions; the approval gate has not yet been tried in a real session.
 - `memory-status`, `memory-lint`, `memory-doctor`, `memory-activity` and the hooks need Node.js.
+- The Stop hook compares file times, so it catches "something changed", not "the content is right"; see [`docs/end-of-work.md`](docs/end-of-work.md) for its limits.
 - The skill needs a connected storage (a cloud connector or a local folder Claude can read and write); without one it cannot keep memory between sessions.
 
 ## Common errors
@@ -106,7 +107,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 The session hook is read-only; the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## Tests
-`node --test tests/*.test.mjs` (91 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (108 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Features by version
 
