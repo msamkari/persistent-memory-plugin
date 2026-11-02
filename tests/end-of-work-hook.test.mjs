@@ -152,3 +152,43 @@ test("the skill template freshness.json is a valid config the hook accepts", asy
   writeFileSync(join(p, "MDs", "freshness.json"), readFileSync(join(root, "skills", "memory-continuity", "templates", "freshness.json"), "utf8"));
   const cfg = loadConfig(p); assert.ok(cfg); assert.equal(cfg.disabled, false); assert.ok(cfg.state.length >= 1 && cfg.work.length >= 1);
 });
+
+// ---- subagent transcripts and Unicode normalisation (1.6.1) ----
+const subagent = (p, blocks, name = "agent-a1.jsonl") => {
+  const d = join(p, "session", "subagents"); mkdirSync(d, { recursive: true });
+  const lines = blocks.map((b) => JSON.stringify({ type: "assistant", isSidechain: true, message: { content: [{ type: "tool_use", id: "s", ...b }] } }));
+  writeFileSync(join(d, name), lines.join("\n") + "\n");
+};
+test("a work file written only by this session's subagent counts and blocks", () => {
+  const p = project(); const t = transcript(p, [{ name: "Agent", input: { description: "d", prompt: "update Jobs/log.md" } }]);
+  assert.equal(run(p, { transcript_path: t }).stdout, "", "main transcript alone shows no write");
+  subagent(p, [wrote(p, "Jobs/log.md")]);
+  assert.equal(JSON.parse(run(p, { transcript_path: t }).stdout).decision, "block");
+});
+test("a subagent that only read the work file does not count", () => {
+  const p = project(); const t = transcript(p, [{ name: "Agent", input: { description: "d", prompt: "x" } }]);
+  subagent(p, [{ name: "Read", input: { file_path: join(p, "Jobs", "log.md") } }, { name: "Bash", input: { command: "cat Jobs/log.md" } }]);
+  assert.equal(run(p, { transcript_path: t }).stdout, "");
+});
+test("a subagent shell write that names the file counts", () => {
+  const p = project(); const t = transcript(p, [{ name: "Agent", input: { description: "d", prompt: "x" } }]);
+  subagent(p, [{ name: "PowerShell", input: { command: `Set-Content -Path "${join(p, "Jobs", "log.md")}" -Value x` } }]);
+  assert.equal(JSON.parse(run(p, { transcript_path: t }).stdout).decision, "block");
+});
+test("an unreadable or empty subagent entry never breaks the check", () => {
+  const p = project(); const t = transcript(p, [wrote(p, "Jobs/log.md")]);
+  mkdirSync(join(p, "session", "subagents", "weird.jsonl"), { recursive: true }); // a directory named like a transcript
+  writeFileSync(join(p, "session", "subagents", "empty.jsonl"), "");
+  const r = run(p, { transcript_path: t }); assert.equal(r.status, 0); assert.equal(JSON.parse(r.stdout).decision, "block");
+});
+test("a decomposed (NFD) file name in the transcript matches the composed name on disk", () => {
+  const p = project(); put(p, "Jobs/caf\u00e9.md", T0 + 500);
+  const t = transcript(p, [{ name: "Edit", input: { file_path: join(p, "Jobs", "cafe\u0301.md") } }]);
+  assert.equal(JSON.parse(run(p, { transcript_path: t }).stdout).decision, "block");
+});
+test("Arabic folder and file names with spaces are matched (backslash and forward slash)", () => {
+  const rel = "Jobs/ملف عمل 1.md"; const p = project(); put(p, rel, T0 + 500);
+  for (const fp of [join(p, ...rel.split("/")).replace(/\//g, "\\"), join(p, ...rel.split("/")).replace(/\\/g, "/")]) {
+    assert.equal(JSON.parse(run(p, { transcript_path: transcript(p, [{ name: "Edit", input: { file_path: fp } }]) }).stdout).decision, "block");
+  }
+});

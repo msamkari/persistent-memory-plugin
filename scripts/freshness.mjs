@@ -98,39 +98,56 @@ export function isScheduledTask(transcriptPath) {
   } catch { return false; }
 }
 
-// Which of the candidate files did THIS session write? Parses tool_use blocks of the JSONL transcript:
-// file tools by their file_path, shell tools by a write-looking command that names the path.
-// A mere read or a mention in text does not count. Bounded by bytes and time; on a bound it returns what it found.
+// Subagents spawned by this session keep their own transcripts next to the main one:
+// <dir>/<session>.jsonl  ->  <dir>/<session>/subagents/agent-*.jsonl. Their tool calls are this session's work too.
+export function subagentTranscripts(transcriptPath) {
+  try {
+    const dir = path.join(path.dirname(transcriptPath), path.basename(transcriptPath, path.extname(transcriptPath)), "subagents");
+    return fs.readdirSync(dir).filter((n) => n.endsWith(".jsonl")).map((n) => path.join(dir, n));
+  } catch { return []; }
+}
+
+// Compare paths as Unicode NFC so a decomposed name in the transcript still matches the composed name on disk.
+const fold = (s) => slash(s).normalize("NFC").toLowerCase();
+
+// Which of the candidate files did THIS session write? Parses tool_use blocks of the JSONL transcript
+// (and of this session's subagent transcripts): file tools by their file_path, shell tools by a write-looking
+// command that names the path. A mere read or a mention in text does not count.
+// Bounded by bytes and time over all files together; on a bound it returns what it found.
 export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000, maxBytes = 400 * 1024 * 1024 } = {}) {
   const found = new Set();
-  const lower = rels.map((r) => [r, slash(r).toLowerCase()]);
+  const lower = rels.map((r) => [r, fold(r)]);
+  const tails = lower.map(([r, l]) => [r, l, l.split("/").slice(-2).join("/")]);
   const t0 = Date.now(); let bytes = 0;
-  const rl = readline.createInterface({ input: fs.createReadStream(transcriptPath, { encoding: "utf8" }), crlfDelay: Infinity });
-  try {
-    for await (const line of rl) {
-      bytes += line.length;
-      if (Date.now() - t0 > maxMs || bytes > maxBytes) break;
-      if (!line.includes('"tool_use"')) continue;
-      const tails = lower.map(([r, l]) => [r, l, l.split("/").slice(-2).join("/")]);
-      const flat = slash(line).toLowerCase(); // JSON-escaped backslashes become "//": collapse them
-      const norm = flat.replace(/\/\/+/g, "/");
-      if (!tails.some(([, , tail]) => norm.includes(tail))) continue;
-      let obj; try { obj = JSON.parse(line); } catch { continue; }
-      const content = obj?.message?.content;
-      if (!Array.isArray(content)) continue;
-      for (const b of content) {
-        if (b?.type !== "tool_use" || !b.input) continue;
-        if (FILE_TOOLS.has(b.name)) {
-          const fp = slash(b.input.file_path || b.input.notebook_path || "").toLowerCase();
-          for (const [r, l] of lower) if (fp === l || fp.endsWith("/" + l)) found.add(r);
-        } else if (SHELL_TOOLS.has(b.name)) {
-          const cmd = slash(b.input.command || "").toLowerCase().replace(/\/\/+/g, "/");
-          if (WRITEISH.test(cmd)) for (const [r, l] of lower) if (cmd.includes(l)) found.add(r);
+  for (const file of [transcriptPath, ...subagentTranscripts(transcriptPath)]) {
+    const rl = readline.createInterface({ input: fs.createReadStream(file, { encoding: "utf8" }), crlfDelay: Infinity });
+    rl.on("error", () => {}); // a vanished subagent file must not abort the scan
+    let over = false;
+    try {
+      for await (const line of rl) {
+        bytes += line.length;
+        if (Date.now() - t0 > maxMs || bytes > maxBytes) { over = true; break; }
+        if (!line.includes('"tool_use"')) continue;
+        const norm = fold(line).replace(/\/\/+/g, "/"); // JSON-escaped backslashes become "//": collapse them
+        if (!tails.some(([, , tail]) => norm.includes(tail))) continue;
+        let obj; try { obj = JSON.parse(line); } catch { continue; }
+        const content = obj?.message?.content;
+        if (!Array.isArray(content)) continue;
+        for (const b of content) {
+          if (b?.type !== "tool_use" || !b.input) continue;
+          if (FILE_TOOLS.has(b.name)) {
+            const fp = fold(b.input.file_path || b.input.notebook_path || "");
+            for (const [r, l] of lower) if (fp === l || fp.endsWith("/" + l)) found.add(r);
+          } else if (SHELL_TOOLS.has(b.name)) {
+            const cmd = fold(b.input.command || "").replace(/\/\/+/g, "/");
+            if (WRITEISH.test(cmd)) for (const [r, l] of lower) if (cmd.includes(l)) found.add(r);
+          }
         }
+        if (found.size === rels.length) break;
       }
-      if (found.size === rels.length) break;
-    }
-  } finally { rl.close(); }
+    } catch { /* unreadable file: keep what was found */ } finally { rl.close(); }
+    if (over || found.size === rels.length) break;
+  }
   return found;
 }
 

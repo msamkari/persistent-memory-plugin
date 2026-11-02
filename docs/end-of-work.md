@@ -39,7 +39,11 @@ Write the file as UTF-8 (a BOM is tolerated). The hook reads the project root fr
 ## What it does
 At the end of a turn, if some work file is newer than the **oldest** state file, and this session itself wrote that file, the hook blocks ending the turn once with a message naming the files. Update the work log first and the hand-over file last, because the check compares file times.
 
-"This session wrote it" means the transcript contains a write: a `Write`, `Edit`, `MultiEdit` or `NotebookEdit` call with that path, or a `Bash`/`PowerShell` command that names the path and looks like a write (redirect, copy, move, in-place edit, ...). A read, or a mention in text, does not count. Changes made by another session, another agent or a sync client do not block this session.
+**The block repeats on every turn.** "Once" means once per turn, not once per session: as long as the state files stay behind, the next turn that ends is blocked again (the second-pass guard only stops a loop inside the same turn). If you do not want to update them, say so in chat, or set `"disabled": true` in the config.
+
+"This session wrote it" means the transcript contains a write: a `Write`, `Edit`, `MultiEdit` or `NotebookEdit` call with that path, or a `Bash`/`PowerShell` command that names the path and looks like a write (redirect, copy, move, in-place edit, ...). A read, or a mention in text, does not count. Subagents started by this session count as this session: their own transcripts (`<session>/subagents/agent-*.jsonl`, next to the main transcript) are read too. Changes made by another session or a sync client do not block this session.
+
+The hook does not override the permission system. If the command you use to update the state files is refused (for example a shell command denied by auto mode), the block stays; update the files with `Edit` or `Write` instead.
 
 ## What it never does
 - Block twice in a row: on the second pass (`stop_hook_active`) it always allows.
@@ -49,10 +53,10 @@ At the end of a turn, if some work file is newer than the **oldest** state file,
 
 ## Limits
 - It compares file times, so it catches "something changed", not "the content is right". Pair it with a check script (see the skill `memory-continuity`).
-- Work done by a subagent that writes a file without that path appearing in this session's own tool calls is not attributed to this session.
 - A shell command that writes in a way the pattern does not recognise (for example through an interpreter's own file API) is not counted.
+- A shell write by relative path after `cd` (for example `cd Jobs && echo x > log.md`) is not counted: the command must contain the last two path segments (`jobs/log.md`). Use the full or project-relative path, or `Edit`/`Write`.
 - A change of an external system (a platform, a database) with no work file written is not seen. Keep a work-log line as the habit that triggers the update.
 - If a project already has its own Stop hook with the same job, do not configure both: they would both fire.
 
 ## Tested
-`tests/end-of-work-hook.test.mjs` (18 tests, run in CI on Ubuntu, Windows and macOS). Each protection was checked by deliberately breaking it and watching a test fail: session attribution, the second-pass guard, the scheduled-task skip, the write-looking-command check, and "oldest state file decides".
+`tests/end-of-work-hook.test.mjs` (30 tests, run in CI on Ubuntu, Windows and macOS). Each protection was checked by deliberately breaking it and watching a test fail: session attribution, the second-pass guard, the scheduled-task skip, the write-looking-command check, "oldest state file decides", reading subagent transcripts and Unicode (NFC) path matching. Arabic folder and file names with spaces are covered, with backslash and forward-slash paths.
