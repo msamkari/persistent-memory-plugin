@@ -5,6 +5,8 @@
 - Path matching now compares Unicode-normalised (NFC) text, so a decomposed file name in the transcript matches the composed name on disk.
 - `docs/end-of-work.md`: says plainly that the block repeats on every turn while the state files are behind (once per turn, not once per session), that the hook does not override the permission system (update the files with Edit/Write if a shell command is refused), and lists the remaining limit: a shell write by relative path after `cd` is not counted.
 - Tests: `tests/end-of-work-hook.test.mjs` 24 -> 30 (subagent write, subagent read-only, subagent shell write, unreadable subagent entry, NFD name, Arabic names with spaces); two deliberate breaks (no subagent scan, no NFC) were each caught.
+- `README.ar.md` brought back in line with `README.md`: it now has the same sections (social preview image, "See it run", the full parts table including the Stop hook, install elsewhere, two names, common errors, Safety, Tests, features by version, optional extras). The English README was also corrected: the Windows limitation no longer says the hooks were never tried in a real session, the test count is current, and the Stop hook is described as blocking once per turn.
+- Tests: 3 new checks in `tests/trust-docs.test.mjs` keep the two READMEs aligned (same number of sections, same linked docs and images, every skill and hook named, same test count); two deliberate breaks were caught. 108 tests in total (107 pass, 1 skipped as before).
 - Found by simulated edge-case runs of the hook (10 cases; the subagent gap and the NFD name are fixed here, the relative-path-after-`cd` gap is documented). Not changed: the approval gate, the SessionStart hook, the skills.
 
 ## 1.6.0 (2026-11-01)
