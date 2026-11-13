@@ -6,7 +6,7 @@ allowed-tools: Read, Bash(node:*)
 One helper, configured per project, so no script is copied into the project.
 
 1. See where the copy would go (copies nothing): `node "${CLAUDE_PLUGIN_ROOT}/scripts/archive.mjs" copy "<file>" --root "<project root>"`
-2. Make the copy: the same command with `--write`. It prints the archive path. Only then replace the live file.
+2. Make the copy: the same command with `--write`. Ask the user before `init --write` (it creates `MDs/archive.json`); a copy of a file the user asked you to replace needs no extra question, because it only adds a file. It prints the archive path. Only then replace the live file.
 
 What it guarantees: the original is never changed or deleted, an existing archive copy is never overwritten (if the name is taken it uses the next letter), and the copy is compared with the original (SHA-256) before it reports OK.
 

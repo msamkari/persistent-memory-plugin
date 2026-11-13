@@ -145,6 +145,19 @@ test("the home folder and its standard children are silent; a project folder und
   assert.match(session(join(HOME, "Dropbox", "My_Project"), data).stdout, /memory-setup/);
 });
 
+test("standard folders are recognised whatever their letter case (Linux shows Documents, not documents)", () => {
+  for (const d of ["Documents", "DOCUMENTS", "Downloads", "Desktop", "OneDrive", "Dropbox", "AppData"]) {
+    assert.notEqual(excludedReason(join(HOME, d), { home: HOME }), "", d);
+  }
+});
+
+test("Known Folder Move: OneDrive/Documents is a standard folder, a project inside it is not", () => {
+  assert.notEqual(excludedReason(join(HOME, "OneDrive", "Documents"), { home: HOME }), "");
+  assert.notEqual(excludedReason(join(HOME, "OneDrive - Example", "Desktop"), { home: HOME }), "");
+  assert.equal(excludedReason(join(HOME, "OneDrive", "Documents", "My_Project"), { home: HOME }), "");
+  assert.equal(excludedReason(join(HOME, "OneDrive", "My_Project"), { home: HOME }), "");
+});
+
 test("folders above the home folder and drive roots are never projects", () => {
   assert.equal(excludedReason(dirname(HOME), { home: HOME }), "above the home folder");
   assert.equal(excludedReason(process.platform === "win32" ? "C:\\" : "/", { home: HOME }) !== "", true);
@@ -160,8 +173,8 @@ test("system folders are silent", () => {
     assert.equal(session(sys, data, sysEnv).stdout, "");
     assert.equal(session(join(sys, "Vendor", "App"), data, sysEnv).stdout, "");
     assert.deepEqual(markers(data), []);
-    assert.equal(excludedReason(process.env.SystemRoot || "C:\Windows", { home: HOME }), "system folder");
-    assert.equal(excludedReason(join(process.env.SystemRoot || "C:\Windows", "System32"), { home: HOME }), "system folder");
+    assert.equal(excludedReason(process.env.SystemRoot || "C:\\Windows", { home: HOME }), "system folder");
+    assert.equal(excludedReason(join(process.env.SystemRoot || "C:\\Windows", "System32"), { home: HOME }), "system folder");
   } else {
     for (const d of ["/usr", "/usr/lib", "/etc", "/bin"]) assert.equal(excludedReason(d, { home: HOME }), "system folder", d);
   }
