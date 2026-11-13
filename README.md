@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.6.1)
+# Persistent Memory — a Claude plugin (v1.7.0)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -10,7 +10,7 @@ It keeps a small set of plain-text memory files (current status, decisions, key 
 
 It is for any long-running project, not only code: freelance work, a business, a negotiation, research, a family project. You stop re-explaining your project every session.
 
-**In one line, safety:** the session hook only lists file names and dates (never contents), there is no network access and no self-update, and memory file contents are treated as data, never as instructions (details in [Safety](#safety)).
+**In one line, safety:** the session hook only lists file names and dates (never contents) and writes nothing in your project, there is no network access and no self-update, and memory file contents are treated as data, never as instructions (details in [Safety](#safety)).
 
 ## What it looks like
 
@@ -45,6 +45,8 @@ Real output of the plugin's scripts and the session hook on that example folder 
 
 Then tell Claude, for example: *"Build a persistent memory system for my project."* It asks a few simple setup questions (language, where to store the files, file naming), builds the structure, and from the next session it reads the files first and continues where you stopped. Check the state any time with `/persistent-memory:memory-status`.
 
+**One install, every project.** Install it once for yourself (user scope) and it serves every folder; nothing is installed or copied per project. The first time you open a project that has no memory system, Claude offers in one sentence to set it up, and creates files only after you say yes in chat. Say no and it is not offered there again. Details: [`docs/onboarding.md`](docs/onboarding.md).
+
 Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in [`INSTALL.md`](INSTALL.md). Other platforms are under [Install elsewhere](#install-elsewhere).
 
 ## What is inside
@@ -59,8 +61,10 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `memory-activity` | Claude Code / Cowork (needs Node) | Append-only audit log (`Activity_Log/activity.jsonl`): what was done and under which approval. Not part of the mandatory session read |
 | Skill `notebooklm-reference` | Claude Code / Cowork | **Optional guide, not a connector.** There is no official Claude connector for a personal NotebookLM account. The skill starts with a safe manual path for large non-sensitive documents and only then explains optional, unofficial third-party tools, each step approval-gated. Never for memory files (privacy warning inside) |
 | Skill `memory-continuity` | Claude Code / Cowork (the inventory template needs Node) | Optional hand-over layer: a HANDOVER.md entry file and CLAUDE.md pointer, a configurable inventory/manifest script, a mutation test for check scripts, and a cold-start test that uses the read-only `memory-verifier`. The SessionStart hook points a new chat to its HANDOVER.md. See [`docs/continuity.md`](docs/continuity.md) |
+| Skill `memory-setup` | Claude Code / Cowork (needs Node) | Sets up a project that has no memory system, only after you say yes: a `HANDOVER.md` with one "Start here" block, the work log, the state manifest, the archive folders, and the config for the end-of-work check. Shows the plan first, never overwrites, copies no script into the project. Offers the optional companion plugin `vitals` and never installs it. See [`docs/onboarding.md`](docs/onboarding.md) |
+| Skill `memory-archive` | Claude Code / Cowork (needs Node) | Archive before write: copies a file into the project's archive folder under a dated name with a same-day letter (a, b, c), never overwrites a copy, and verifies it. Where files go is the project's own `MDs/archive.json` |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
-| SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. Silent if the folder is not set and there is no HANDOVER.md |
+| SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. In a project with no memory system it adds one note, once per project, so Claude offers the setup. Silent otherwise, and always silent in folders that are not projects |
 | Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once (in every turn) when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
 | PreToolUse approval gate | Claude Code / Cowork only | Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
 
@@ -72,7 +76,7 @@ When you install this plugin, Claude shows a notice such as "includes components
 
 | Hook | When it runs | What it reads | What it writes | Network |
 |---|---|---|---|---|
-| SessionStart | start or resume of a session | file names and dates in your memory folder (if you set one) and the path of a `HANDOVER.md` if present; never file contents | nothing | none |
+| SessionStart | start or resume of a session | file names and dates in your memory folder (if you set one), the path of a `HANDOVER.md` if present, and the names of the entries at the top of the project folder (to see whether it is a project without a memory system); never file contents | never in your project. Only when it offers the setup: one small marker file in the plugin's own data folder (`onboarding/<hash>.json`: a state word and a date, no path and no project name), so the offer is shown once | none |
 | Stop (opt-in) | when Claude finishes a reply | only in a project that has `MDs/freshness.json`: file times and this session's transcript | nothing; it can ask Claude once (in every turn) to update your state files | none |
 | PreToolUse (Bash) | before a shell command | the text of each shell command; it acts only on `git commit`/`git tag`, `gh pr` and `git push` | only when it blocks or asks, and only if a memory folder is set: one line appended to `Activity_Log/activity.jsonl`; it never edits or deletes anything else | none |
 
@@ -95,19 +99,20 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 - Hooks and agents run only in Claude Code and Cowork, not in claude.ai chat.
 - Windows: the hook is Node (`.mjs`), no bash needed. The test suite passes on Windows in CI, and the opt-in Stop hook was tried in real Claude Code sessions on Windows (four cases). The SessionStart hook was seen working in the same sessions; the approval gate has not yet been tried in a real session.
 - `memory-status`, `memory-lint`, `memory-doctor`, `memory-activity` and the hooks need Node.js.
+- The setup offer (v1.7.0) is covered by tests that run the hook as a process on a made-up project; it has not yet been watched in a real interactive session. It is shown once per project, so an unattended first session uses it up (run the skill `memory-setup` by name, or see `reset` in [`docs/onboarding.md`](docs/onboarding.md)).
 - The Stop hook compares file times, so it catches "something changed", not "the content is right"; see [`docs/end-of-work.md`](docs/end-of-work.md) for its limits.
 - The skill needs a connected storage (a cloud connector or a local folder Claude can read and write); without one it cannot keep memory between sessions.
 
 ## Common errors
 - *Plugin rejected on upload:* make sure the zip has the plugin folder at its top level and contains no `bin/` folder.
-- *Hook prints nothing:* `memory_dir` is unset or the folder does not exist; this is by design.
+- *Hook prints nothing:* `memory_dir` is unset or the folder does not exist, and the project already has a memory system, already got its one offer, or is not a project folder; this is by design.
 - *No update after a new release:* the `version` in `plugin.json` must change on every release.
 
 ## Safety
-The session hook is read-only; the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
+The session hook never changes your files (its only write is a marker in the plugin's own data folder, see the table above); the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## Tests
-`node --test tests/*.test.mjs` (108 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (166 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Features by version
 
@@ -124,6 +129,10 @@ Why only a suggestion: we tested replacing "read everything" with a tiered read 
 ### Continuity: hand-over between conversations (added in v1.3.0)
 
 The skill `memory-continuity` helps a brand-new conversation continue without losing work: templates for `HANDOVER.md` and the `CLAUDE.md` pointer, a configurable inventory script (`skills/memory-continuity/templates/continuity-inventory.mjs`) that compares disk with a manifest, a mutation test that proves a check script can fail, and a cold-start test run by the existing read-only `memory-verifier` against an answer key kept outside the project. Conventions for proposal archiving, version names, scheduled tasks, agent tools and Windows hints are in [`docs/continuity.md`](docs/continuity.md). Nothing here changes how memory is read or written; the only hook change is one line that names the HANDOVER.md path (never its text).
+
+### One install, every project (added in v1.7.0)
+
+The plugin is installed once at user scope and serves every folder. In a project without a memory system the SessionStart hook adds one note, once, and Claude offers the setup; the skill `memory-setup` shows a plan and writes only after you agree (`scripts/setup.mjs`, never overwrites). Declining is remembered in the plugin's data folder, not in the project (`scripts/onboarding.mjs`). The skill `memory-archive` (`scripts/archive.mjs`) archives a file before it is replaced, with the folders set per project in `MDs/archive.json`. The separate plugin `vitals` is offered as an optional companion and is never installed for you. Projects that already use the plugin see no change: the Stop hook and the approval gate are untouched. Everything is in [`docs/onboarding.md`](docs/onboarding.md).
 
 ## Optional extras
 
