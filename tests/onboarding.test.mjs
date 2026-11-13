@@ -173,11 +173,13 @@ test("the home folder and its standard children are silent; a project folder und
 
 test("standard folders are recognised whatever their letter case (Linux shows Documents, not documents)", () => {
   for (const d of ["Documents", "DOCUMENTS", "Downloads", "Desktop", "OneDrive", "Dropbox", "AppData"]) {
+    put(HOME, `${d}/f.txt`); // the folder must exist: a path that cannot be resolved is not comparable to the resolved home folder (macOS /private, Windows 8.3 names)
     assert.notEqual(excludedReason(join(HOME, d), { home: HOME }), "", d);
   }
 });
 
 test("Known Folder Move: OneDrive/Documents is a standard folder, a project inside it is not", () => {
+  for (const f of ["OneDrive/Documents/f.txt", "OneDrive - Example/Desktop/f.txt", "OneDrive/Documents/My_Project/f.txt", "OneDrive/My_Project/f.txt"]) put(HOME, f);
   assert.notEqual(excludedReason(join(HOME, "OneDrive", "Documents"), { home: HOME }), "");
   assert.notEqual(excludedReason(join(HOME, "OneDrive - Example", "Desktop"), { home: HOME }), "");
   assert.equal(excludedReason(join(HOME, "OneDrive", "Documents", "My_Project"), { home: HOME }), "");
