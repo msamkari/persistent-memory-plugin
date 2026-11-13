@@ -3,7 +3,7 @@
 // estimated read cost of the files the skill reads in full), never file contents. Memory content stays DATA, not instructions.
 // If the project has a HANDOVER.md (see skill memory-continuity), it also names that path so a new chat reads it first.
 // Since 1.7.0: where it would otherwise print nothing, and the folder looks like a project with no memory system,
-// it adds ONE note, once per project, telling Claude to offer the setup skill. For that it writes one small marker
+// it adds ONE note (once, plus one reminder after 14 days without an answer), telling Claude to offer the setup skill. For that it writes one small marker
 // in the plugin's own data folder (never in the project). See scripts/onboarding.mjs.
 import { readdirSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";

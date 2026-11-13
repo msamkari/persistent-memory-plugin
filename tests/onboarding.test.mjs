@@ -36,9 +36,35 @@ test("first session in a project without a memory system: one short offer, and n
   assert.equal(out.hookSpecificOutput.hookEventName, "SessionStart");
   const ctx = ctxOf(r);
   assert.equal(ctx, OFFER_TEXT);
-  assert.ok(ctx.length <= 700, `offer is ${ctx.length} characters`);
+  assert.ok(ctx.length <= 800, `offer is ${ctx.length} characters`);
   assert.match(ctx, /memory-setup/); assert.match(ctx, /unless the user says yes/); assert.match(ctx, /ONE short sentence/);
   assert.equal(tree(p), before, "the hook must not create anything inside the project");
+});
+
+test("one reminder after 14 days of silence, then never again; a no is never reminded", () => {
+  const data = tmp("pms-data-"), p = tmp("pms-proj-"); put(p, "notes.txt");
+  assert.match(session(p, data).stdout, /memory-setup/);
+  const marker = join(data, "onboarding", markers(data)[0]);
+  const age = (days) => { const o = JSON.parse(readFileSync(marker, "utf8")); o.at = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10); writeFileSync(marker, JSON.stringify(o) + "\n"); };
+  age(13); assert.equal(session(p, data).stdout, "", "day 13: still quiet");
+  age(15); assert.match(session(p, data).stdout, /memory-setup/, "day 15: the one reminder");
+  age(60); assert.equal(session(p, data).stdout, "", "no second reminder");
+  assert.equal(markers(data).length, 2);
+  const q = tmp("pms-proj-"); put(q, "notes.txt"); session(q, data);
+  run(["decline", "--root", q, "--data", data]);
+  for (const f of readdirSync(join(data, "onboarding"))) { const o = JSON.parse(readFileSync(join(data, "onboarding", f), "utf8")); o.at = "2000-01-01"; writeFileSync(join(data, "onboarding", f), JSON.stringify(o) + "\n"); }
+  assert.equal(session(q, data).stdout, "", "declined stays quiet however old");
+});
+
+test("reset clears the reminder marker too", () => {
+  const data = tmp("pms-data-"), p = tmp("pms-proj-"); put(p, "notes.txt");
+  session(p, data);
+  const marker = join(data, "onboarding", markers(data)[0]);
+  writeFileSync(marker, JSON.stringify({ v: 1, state: "offered", at: "2000-01-01" }) + "\n");
+  session(p, data);
+  assert.equal(markers(data).length, 2);
+  assert.equal(run(["reset", "--root", p, "--data", data]).status, 0);
+  assert.deepEqual(markers(data), []);
 });
 
 test("the offer is shown once: the second and third session are silent", () => {

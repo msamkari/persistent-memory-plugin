@@ -26,7 +26,7 @@ test("the SessionStart hook has no write call of its own, and onboarding.mjs wri
   assert.deepEqual(code("hooks/session-index.mjs").filter((l) => writes.test(l)), []);
   const calls = code("scripts/onboarding.mjs").join("\n").match(new RegExp(writes.source + "[^,)]*", "g")) || [];
   assert.ok(calls.length >= 4, "expected to find the marker writes");
-  for (const c of calls) assert.match(c, /\((markerPath|offPath|stateDir)\(/, `write outside the state folder: ${c}`);
+  for (const c of calls) assert.match(c, /\((markerPath|remindPath|offPath|stateDir)\(/, `write outside the state folder: ${c}`);
 });
 
 test("the Stop hook and the approval gate do not know about the offer", () => {
@@ -53,8 +53,8 @@ test("the offer text itself forbids writing without a yes and names the skill", 
   const { OFFER_TEXT } = await import("../scripts/onboarding.mjs");
   assert.match(OFFER_TEXT, /Do not create or change any file unless the user says yes in chat/);
   assert.match(OFFER_TEXT, /persistent-memory:memory-setup/);
-  assert.match(OFFER_TEXT, /once per project/);
-  assert.ok(OFFER_TEXT.length <= 700);
+  assert.match(OFFER_TEXT, /at most twice per project/);
+  assert.ok(OFFER_TEXT.length <= 800);
   assert.doesNotMatch(OFFER_TEXT, /[\\/]Users[\\/]|[A-Za-z]:[\\/]/, "no path in the text");
 });
 

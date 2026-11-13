@@ -33,6 +33,9 @@ const stateDir = (data) => path.join(data, "onboarding");
 export const projectKey = (root) => createHash("sha256").update(normRoot(root)).digest("hex").slice(0, 32);
 const markerPath = (data, root) => path.join(stateDir(data), projectKey(root) + ".json");
 const offPath = (data) => path.join(stateDir(data), "_off");
+// A second marker exists only after the one reminder (see REMIND_AFTER_DAYS): created with "wx", so one session wins.
+const remindPath = (data, root) => path.join(stateDir(data), projectKey(root) + ".2.json");
+export const REMIND_AFTER_DAYS = 14;
 
 // "offered" | "declined" | null. A marker that exists but cannot be read counts as "offered": stay quiet.
 export function projectState(data, root) {
@@ -46,7 +49,22 @@ export function setProjectState(data, root, state, { exclusive = false } = {}) {
   const body = JSON.stringify({ v: 1, state, at: new Date().toISOString().slice(0, 10) }) + "\n";
   fs.writeFileSync(markerPath(data, root), body, { encoding: "utf8", flag: exclusive ? "wx" : "w" });
 }
-export function clearProjectState(data, root) { try { fs.rmSync(markerPath(data, root)); return true; } catch { return false; } }
+export function clearProjectState(data, root) {
+  let cleared = false;
+  try { fs.rmSync(markerPath(data, root)); cleared = true; } catch { /* not there */ }
+  try { fs.rmSync(remindPath(data, root)); cleared = true; } catch { /* not there */ }
+  return cleared;
+}
+// True when the first offer got no answer ("offered", not "declined"), is at least REMIND_AFTER_DAYS old,
+// and the one reminder has not been used yet. An unreadable date means: no reminder.
+export function reminderDue(data, root, now = new Date()) {
+  try {
+    const m = JSON.parse(fs.readFileSync(markerPath(data, root), "utf8"));
+    if (m.state !== "offered" || fs.existsSync(remindPath(data, root))) return false;
+    const t = Date.parse(String(m.at) + "T00:00:00Z");
+    return Number.isFinite(t) && (now.getTime() - t) / 86400000 >= REMIND_AFTER_DAYS;
+  } catch { return false; }
+}
 export const isGloballyOff = (data) => fs.existsSync(offPath(data));
 export function setGloballyOff(data, off) {
   if (off) { fs.mkdirSync(stateDir(data), { recursive: true }); fs.writeFileSync(offPath(data), "off\n", "utf8"); }
@@ -129,9 +147,9 @@ export function looksLikeProject(root, opts = {}) {
 
 export const OFFER_TEXT = "persistent-memory: this folder looks like a project and has no memory system yet "
   + "(no MDs/System_Current_MD, HANDOVER.md or MDs/freshness.json). In your first reply, after answering the user, "
-  + "add ONE short sentence in the user's language offering to set it up (skill persistent-memory:memory-setup), and say it will not be offered again for this folder. "
+  + "add ONE short sentence in the user's language offering to set it up (skill persistent-memory:memory-setup), and say that a no means it will not be offered again for this folder. "
   + "Do not create or change any file unless the user says yes in chat. If the user says no, follow the decline step of that skill. "
-  + "If the user does not react, drop it. This note is shown once per project.";
+  + "If the user does not react, drop it. This note is shown at most twice per project: now, and once more after 14 days if nobody answered; a no stops it for good.";
 
 // Pure decision (no writes). Returns { offer, why }.
 export function decideOffer({ root, env = process.env, home = os.homedir(), memoryDirSet = false } = {}) {
@@ -148,6 +166,7 @@ export function decideOffer({ root, env = process.env, home = os.homedir(), memo
     if (ex) return { offer: false, why: ex };
     if (!looksLikeProject(root, { env, home })) return { offer: false, why: "no files or project markers at the top level" };
     const st = projectState(data, root);
+    if (st === "offered" && reminderDue(data, root)) return { offer: true, why: `reminder: offered ${REMIND_AFTER_DAYS}+ days ago and nobody answered` };
     if (st) return { offer: false, why: `already ${st} for this project` };
     return { offer: true, why: "first session in a project without a memory system" };
   } catch { return { offer: false, why: "could not check" }; }
@@ -158,7 +177,13 @@ export function decideOffer({ root, env = process.env, home = os.homedir(), memo
 export function claimOffer(opts = {}) {
   const env = opts.env || process.env;
   if (!decideOffer(opts).offer) return "";
-  try { setProjectState(dataDir(env), opts.root, "offered", { exclusive: true }); } catch { return ""; }
+  const data = dataDir(env);
+  try {
+    if (projectState(data, opts.root) === "offered") {  // the one reminder: its own marker, exclusive
+      fs.mkdirSync(stateDir(data), { recursive: true });
+      fs.writeFileSync(remindPath(data, opts.root), JSON.stringify({ v: 1, state: "reminded", at: new Date().toISOString().slice(0, 10) }) + "\n", { encoding: "utf8", flag: "wx" });
+    } else setProjectState(data, opts.root, "offered", { exclusive: true });
+  } catch { return ""; }
   return OFFER_TEXT;
 }
 
@@ -188,7 +213,7 @@ function cli() {
   if (cmd === "decline") { setProjectState(data, root, "declined"); console.log("OK recorded: declined for this project. The setup will not be offered here again. Nothing was written in the project."); return 0; }
   if (cmd === "reset") { console.log(clearProjectState(data, root) ? "OK cleared the recorded answer for this project." : "OK nothing was recorded for this project."); return 0; }
   if (cmd === "off") { setGloballyOff(data, true); console.log("OK the setup will not be offered in any project. Undo with: onboarding.mjs on"); return 0; }
-  setGloballyOff(data, false); console.log("OK offers are on again (once per project without a memory system).");
+  setGloballyOff(data, false); console.log("OK offers are on again (at most twice per project without a memory system).");
   return 0;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

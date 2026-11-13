@@ -64,7 +64,7 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `memory-setup` | Claude Code / Cowork (needs Node) | Sets up a project that has no memory system, only after you say yes: a `HANDOVER.md` with one "Start here" block, the work log, the state manifest, the archive folders, and the config for the end-of-work check. Shows the plan first, never overwrites, copies no script into the project. Offers the optional companion plugin `vitals` and never installs it. See [`docs/onboarding.md`](docs/onboarding.md) |
 | Skill `memory-archive` | Claude Code / Cowork (needs Node) | Archive before write: copies a file into the project's archive folder under a dated name with a same-day letter (a, b, c), never overwrites a copy, and verifies it. Where files go is the project's own `MDs/archive.json` |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
-| SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. In a project with no memory system it adds one note, once per project, so Claude offers the setup. Silent otherwise, and always silent in folders that are not projects |
+| SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. In a project with no memory system it adds one note, so Claude offers the setup (once, and one reminder 14 days later if nobody answered; a "no" ends it). Silent otherwise, and always silent in folders that are not projects |
 | Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once (in every turn) when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
 | PreToolUse approval gate | Claude Code / Cowork only | Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
 
@@ -99,7 +99,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 - Hooks and agents run only in Claude Code and Cowork, not in claude.ai chat.
 - Windows: the hook is Node (`.mjs`), no bash needed. The test suite passes on Windows in CI, and the opt-in Stop hook was tried in real Claude Code sessions on Windows (four cases). The SessionStart hook was seen working in the same sessions; the approval gate has not yet been tried in a real session.
 - `memory-status`, `memory-lint`, `memory-doctor`, `memory-activity` and the hooks need Node.js.
-- The setup offer (v1.7.0) is covered by tests that run the hook as a process on a made-up project; it has not yet been watched in a real interactive session. It is shown once per project, so an unattended first session uses it up (run the skill `memory-setup` by name, or see `reset` in [`docs/onboarding.md`](docs/onboarding.md)).
+- The setup offer (v1.7.0) is covered by tests that run the hook as a process on a made-up project; it has not yet been watched in a real interactive session. It is shown once, plus one reminder after 14 days without an answer, so an unattended first session uses up the first (run the skill `memory-setup` by name, or see `reset` in [`docs/onboarding.md`](docs/onboarding.md)).
 - The Stop hook compares file times, so it catches "something changed", not "the content is right"; see [`docs/end-of-work.md`](docs/end-of-work.md) for its limits.
 - The skill needs a connected storage (a cloud connector or a local folder Claude can read and write); without one it cannot keep memory between sessions.
 
@@ -112,7 +112,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 The session hook never changes your files (its only write is a marker in the plugin's own data folder, see the table above); the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## Tests
-`node --test tests/*.test.mjs` (169 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (171 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Features by version
 
