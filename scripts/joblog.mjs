@@ -1,29 +1,40 @@
 #!/usr/bin/env node
 // Job-log helper: appends ONE line to a log file inside a project's Jobs/ or MDs/ folder, so unattended
-// (scheduled) sessions do not have to write it through the shell (`printf '...' >> file`), where quotes,
-// brackets and slashes in the text trip the permission system and a broad allow rule such as Bash(printf:*)
-// would let a session write ANY file. This script can only append, only one line, only inside the project.
+// (scheduled) sessions do not have to write it through the shell (`printf '...' >> file`). A shell redirect is
+// a file write the permission system asks about, and the usual fix (a broad rule such as Bash(printf:*)) would
+// let a session write ANY file. This script can only append, only one line, only inside the project it runs in.
 //
 // CLI: node joblog.mjs --root DIR --file Jobs/log.md (--text "line" | --stdin) [--stamp] [--create] [--dry-run]
-//   --root     project folder (default: CLAUDE_PROJECT_DIR, then the current folder)
+//   --root     the project folder; it must be the folder this session runs in (CLAUDE_PROJECT_DIR or the current
+//              folder) or a folder inside it: a session cannot write into another project
 //   --file     path RELATIVE to the root; must be under Jobs/ or MDs/ and end in .md, .txt or .log
-//   --text     the line (a newline, control character or more than 2000 characters is refused)
-//   --stdin    read the line from stdin instead (no shell quoting at all)
+//   --text     the line; --stdin reads it from stdin instead (no shell quoting at all; prefer --text in PowerShell 5.1)
 //   --stamp    prefix "YYYY-MM-DD HH:MM " (local time)
-//   --create   allow creating the file if it does not exist (default: it must already exist)
+//   --create   allow creating the file if it does not exist (never a folder)
 //   --dry-run  say what would be written, write nothing
-// Exit codes: 0 appended (or dry-run ok), 1 refused or failed (nothing written), 2 usage error.
-// Guarantees: never opens a file for writing except with the append flag; never changes existing bytes;
-// refuses `..`, absolute paths, drive letters, UNC paths, `:` (Windows streams), symlinks (file or any folder
-// on the way) and anything that resolves outside the project. No network, no other process.
+// What the text goes through: Unicode NFC, one trailing line ending removed, surrounding spaces trimmed, invisible
+// direction/formatting characters removed (zero-width joiner and non-joiner are kept: Arabic and Persian need them).
+// Refused (exit 1, nothing written): a line break or other control character inside the text, U+FFFD (broken UTF-8),
+// more than 2000 characters, `..`, absolute, drive, UNC and `:` paths, Windows device names, files outside Jobs/ and
+// MDs/, other extensions, symbolic links and junctions (file or any folder on the way), files with several hard
+// links, files that are not UTF-8 text (a NUL near the end), a missing file without --create.
+// Exit codes: 0 appended (or dry-run ok), 1 refused or failed, 2 usage error.
+// Honest limit: the checks run before the file is opened; the open itself refuses links where the platform allows
+// (O_NOFOLLOW on Linux/macOS) and the opened file is re-checked, but on Windows a link swapped in between the check
+// and the open by a process that can already write inside the project is not detected.
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // character classes are built from code points (no escape sequences in the source)
-const cls = (ranges, flags) => new RegExp("[" + ranges.map(([a, b]) => String.fromCharCode(a) + "-" + String.fromCharCode(b)).join("") + "]", flags);
-const CONTROL = cls([[0, 8], [10, 31], [127, 133], [0x2028, 0x2029]], ""); // no g flag: test() must not keep state
-const INVISIBLE = cls([[0x200b, 0x200f], [0x202a, 0x202e], [0x2066, 0x2069], [0x061c, 0x061c], [0xfeff, 0xfeff]], "g");
+const cls = (ranges, flags) => new RegExp("[" + ranges.map(([a, b]) => String.fromCodePoint(a) + "-" + String.fromCodePoint(b)).join("") + "]", flags);
+const CONTROL = cls([[0, 8], [10, 31], [127, 159], [0x2028, 0x2029]], "u"); // no g flag: test() must not keep state
+const INVISIBLE = cls([[0x00ad, 0x00ad], [0x034f, 0x034f], [0x061c, 0x061c], [0x180b, 0x180e], [0x200b, 0x200b], [0x200e, 0x200f],
+  [0x202a, 0x202e], [0x2060, 0x206f], [0x3164, 0x3164], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0xfff9, 0xfffb], [0xe0000, 0xe007f]], "gu");
+const LF = String.fromCharCode(10), CR = String.fromCharCode(13), CRLF = CR + LF;
+const BAD_CHAR = String.fromCharCode(0xfffd);
+const RESERVED = new RegExp("^(con|prn|aux|nul|(com|lpt)[1-9" + String.fromCharCode(0xb9, 0xb2, 0xb3) + "])([.]|$)", "i");
+
 export const MAX_LINE = 2000;
 export const MAX_STDIN = 20000;
 export const ALLOWED_DIRS = ["jobs", "mds"];
@@ -37,13 +48,11 @@ const refuse = (m) => { throw new Refused(m); };
 export function cleanLine(text, { stamp = false, now = new Date() } = {}) {
   if (typeof text !== "string") refuse("no text given");
   let t = text.normalize("NFC");
-  // stdin gives one trailing newline from echo/heredoc: that one is not part of the text
-  if (t.endsWith(String.fromCharCode(10))) t = t.slice(0, -1);
-  if (t.endsWith(String.fromCharCode(13))) t = t.slice(0, -1);
-  if (CONTROL.test(t)) refuse("the text must be ONE line without control characters (newline, escape, NUL and similar are refused; a tab is allowed)");
-  // invisible direction/formatting marks are removed, not refused: Arabic text legitimately carries them and they only hide characters
-  t = t.replace(INVISIBLE, "");
-  t = t.trim();
+  // echo/heredoc/stdin add one trailing line ending: that one is not part of the text
+  if (t.endsWith(CRLF)) t = t.slice(0, -2); else if (t.endsWith(LF)) t = t.slice(0, -1);
+  if (CONTROL.test(t)) refuse("the text must be ONE line without control characters (a line break, escape, NUL and similar are refused; a tab is allowed)");
+  if (t.includes(BAD_CHAR)) refuse("the text contains U+FFFD (input that was not valid UTF-8, or a lone surrogate)");
+  t = t.replace(INVISIBLE, "").trim();
   if (!t) refuse("the text is empty");
   if (stamp) {
     const p2 = (n) => String(n).padStart(2, "0");
@@ -53,18 +62,29 @@ export function cleanLine(text, { stamp = false, now = new Date() } = {}) {
   return t;
 }
 
+// ---- the folder this session may write in ----
+export function checkRoot(root, { env = process.env, cwd = process.cwd() } = {}) {
+  let real;
+  try { real = fs.realpathSync.native(path.resolve(root)); } catch { refuse("the project root does not exist"); }
+  if (!fs.statSync(real).isDirectory()) refuse("the project root is not a folder");
+  const home = [env.CLAUDE_PROJECT_DIR, cwd].filter(Boolean).map((d) => { try { return fs.realpathSync.native(path.resolve(d)); } catch { return ""; } }).filter(Boolean);
+  const ok = home.some((h) => { const rel = path.relative(h, real); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)); });
+  if (!ok) refuse("--root must be the folder this session runs in (CLAUDE_PROJECT_DIR or the current folder) or a folder inside it");
+  return real;
+}
+
 // ---- path ----
 // Returns the absolute target path after every check; throws Refused otherwise.
 export function resolveTarget(root, rel, { create = false } = {}) {
   if (typeof rel !== "string" || !rel.trim()) refuse("no --file given");
-  if (rel.includes("\u0000")) refuse("NUL in the path");
+  if (rel.includes(String.fromCharCode(0))) refuse("NUL in the path");
   const r = rel.replace(/\\/g, "/");
   if (r.startsWith("/") || /^[A-Za-z]:/.test(r) || r.startsWith("//")) refuse("the file must be a path relative to the project root");
   if (r.includes(":")) refuse("':' is not allowed in the path (Windows alternate data streams)");
   const parts = r.split("/");
   if (parts.some((p) => p === "" || p === "." || p === "..")) refuse("empty, '.' or '..' parts are not allowed in the path");
-  if (parts.some((p) => /[\u0000-\u001f\u007f*?"<>|]/.test(p) || /[. ]$/.test(p))) refuse("the path has characters Windows treats specially (wildcards, trailing dot or space, control characters)");
-  if (parts.some((p) => /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i.test(p))) refuse("reserved device name in the path");
+  if (parts.some((p) => CONTROL.test(p) || /[*?"<>|]/.test(p) || /[. ]$/.test(p))) refuse("the path has characters Windows treats specially (wildcards, trailing dot or space, control characters)");
+  if (parts.some((p) => RESERVED.test(p))) refuse("reserved device name in the path");
   if (parts.length < 2) refuse("the file must be inside Jobs/ or MDs/, not in the project root");
   if (!ALLOWED_DIRS.includes(parts[0].toLowerCase())) refuse("only files under Jobs/ or MDs/ can be appended to");
   if (!ALLOWED_EXT.includes(path.extname(parts[parts.length - 1]).toLowerCase())) refuse(`only ${ALLOWED_EXT.join(", ")} files can be appended to`);
@@ -99,29 +119,39 @@ export function resolveTarget(root, rel, { create = false } = {}) {
 }
 
 // ---- append ----
+const C = fs.constants;
+const NOFOLLOW = C.O_NOFOLLOW || 0; // not available on Windows
 export function appendLine(target, line, { dryRun = false } = {}) {
-  let prefix = "";
-  let eol = "\n";
-  let size = 0;
+  let before = null;
+  try { before = fs.lstatSync(target); } catch { /* new file */ }
+  if (dryRun) return { bytes: Buffer.byteLength(line, "utf8") + 1, wrote: false };
+  // ONE open for the whole operation. An existing file is opened for append (+read of its tail), never created
+  // or truncated; a new file is created exclusively.
+  let fd;
   try {
-    const fd = fs.openSync(target, "r");
-    try {
-      size = fs.fstatSync(fd).size;
-      if (size > 0) {
-        const n = Math.min(size, 4096);
-        const buf = Buffer.alloc(n);
-        fs.readSync(fd, buf, 0, n, size - n);
-        const tail = buf.toString("latin1");
-        if (tail.includes("\r\n")) eol = "\r\n";
-        if (!tail.endsWith("\n")) prefix = eol; // the last line had no line ending: finish it first
-      }
-    } finally { fs.closeSync(fd); }
-  } catch (e) { if (e && e.code !== "ENOENT") throw e; }
-  const data = Buffer.from(prefix + line + eol, "utf8");
-  if (dryRun) return { bytes: data.length, wrote: false };
-  const fd = fs.openSync(target, "a"); // append only: existing bytes can never be changed
-  try { fs.writeSync(fd, data); } finally { fs.closeSync(fd); }
-  return { bytes: data.length, wrote: true };
+    fd = before ? fs.openSync(target, C.O_RDWR | C.O_APPEND | NOFOLLOW) : fs.openSync(target, C.O_WRONLY | C.O_APPEND | C.O_CREAT | C.O_EXCL | NOFOLLOW, 0o644);
+  } catch (e) { refuse(`could not open the file (${e && e.code ? e.code : "error"})`); }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) refuse("the opened target is not a regular file");
+    if (st.nlink > 1) refuse("the file has more than one hard link");
+    if (before && before.ino && st.ino && (before.ino !== st.ino || before.dev !== st.dev)) refuse("the file changed between the check and the open");
+    let prefix = "";
+    let eol = LF;
+    if (before && st.size > 0) {
+      const n = Math.min(st.size, 4096);
+      const buf = Buffer.alloc(n);
+      fs.readSync(fd, buf, 0, n, st.size - n);
+      if (buf.includes(0)) refuse("the file does not look like UTF-8 text (NUL found near its end)");
+      const tail = buf.toString("latin1");
+      if (tail.includes(CRLF)) eol = CRLF;
+      if (!tail.endsWith(LF)) prefix = eol; // the last line had no line ending: finish it first
+    }
+    const data = Buffer.from(prefix + line + eol, "utf8");
+    const written = fs.writeSync(fd, data);
+    if (written !== data.length) throw new Error("PARTIAL_WRITE");
+    return { bytes: data.length, wrote: true };
+  } finally { fs.closeSync(fd); }
 }
 
 export function run({ root, file, text, stamp = false, create = false, dryRun = false, now = new Date() }) {
@@ -147,7 +177,7 @@ function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-function cli(argv) {
+export function cli(argv, env = process.env, cwd = process.cwd()) {
   const flags = new Set(["--stdin", "--stamp", "--create", "--dry-run"]);
   const vals = new Set(["--root", "--file", "--text"]);
   const o = {};
@@ -155,21 +185,24 @@ function cli(argv) {
     const a = argv[i];
     if (flags.has(a)) o[a] = true;
     else if (vals.has(a)) { if (i + 1 >= argv.length) { console.error(`usage error: ${a} needs a value`); return 2; } o[a] = argv[++i]; }
-    else { console.error(`usage error: unknown argument ${a}\nusage: node joblog.mjs --root DIR --file Jobs/log.md (--text "line" | --stdin) [--stamp] [--create] [--dry-run]`); return 2; }
+    else { console.error(`usage error: unknown argument ${a}${LF}usage: node joblog.mjs --root DIR --file Jobs/log.md (--text "line" | --stdin) [--stamp] [--create] [--dry-run]`); return 2; }
   }
   if (o["--stdin"] && o["--text"] !== undefined) { console.error("usage error: use --text or --stdin, not both"); return 2; }
   if (!o["--stdin"] && o["--text"] === undefined) { console.error("usage error: give --text or --stdin"); return 2; }
   try {
     const text = o["--stdin"] ? readStdin() : o["--text"];
-    const root = o["--root"] || process.env.CLAUDE_PROJECT_DIR || process.cwd();
+    const root = checkRoot(o["--root"] || env.CLAUDE_PROJECT_DIR || cwd, { env, cwd });
     const r = run({ root, file: o["--file"], text, stamp: !!o["--stamp"], create: !!o["--create"], dryRun: !!o["--dry-run"] });
     console.log(`${r.wrote ? "OK appended" : "OK dry-run, would append"} 1 line (${r.bytes} bytes) to ${String(o["--file"]).replace(/\\/g, "/")}`);
     return 0;
   } catch (e) {
     if (e instanceof Refused) { console.error(`REFUSED: ${e.message}. Nothing was written.`); return 1; }
-    console.error(`FAILED: ${e && e.code ? e.code : "could not write"}. Nothing was written or the write was incomplete; check the file.`);
+    console.error(`FAILED: ${e && (e.code || e.message) ? (e.code || e.message) : "could not write"}. Check the file: the write may be incomplete.`);
     return 1;
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) process.exit(cli(process.argv.slice(2)));
+// run only when started as a script; compare REAL paths so a start through a link, junction, 8.3 name or other letter
+// case (for example from a plugin cache) still runs instead of silently doing nothing
+const sameFile = (a, b) => { try { return fs.realpathSync.native(a).toLowerCase() === fs.realpathSync.native(b).toLowerCase(); } catch { return false; } };
+if (process.argv[1] && sameFile(process.argv[1], fileURLToPath(import.meta.url))) process.exitCode = cli(process.argv.slice(2));

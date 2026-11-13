@@ -6,7 +6,7 @@ import { join, dirname } from "node:path";
 import { spawnSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { cleanLine, resolveTarget, appendLine, run, MAX_LINE } from "../scripts/joblog.mjs";
+import { cleanLine, resolveTarget, appendLine, run, checkRoot, MAX_LINE } from "../scripts/joblog.mjs";
 
 // Strict tests for scripts/joblog.mjs (skill memory-log): append ONE line, only inside Jobs/ or MDs/, never more.
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,7 +17,9 @@ const tmp = (p) => mkdtempSync(join(tmpdir(), p));
 const put = (base, rel, body = "") => { const p = join(base, ...rel.split("/")); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); return p; };
 const sha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const project = () => { const p = tmp("pms-jl-"); put(p, "Jobs/log.md", "# log" + LF + "- first" + LF); put(p, "MDs/notes.txt", ""); return p; };
-const cli = (args, opts = {}) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", input: opts.input, env: { ...process.env, CLAUDE_PROJECT_DIR: "" } });
+// the session runs IN the project: cwd = the --root value (the tool refuses roots outside the session's folder)
+const cwdFor = (args) => { const i = args.indexOf("--root"); const r = i >= 0 ? args[i + 1] : ""; try { return statSync(r).isDirectory() ? r : tmpdir(); } catch { return tmpdir(); } };
+const cli = (args, opts = {}) => spawnSync(process.execPath, [opts.script || SCRIPT, ...args], { encoding: "utf8", input: opts.input, cwd: opts.cwd || cwdFor(args), env: { ...process.env, CLAUDE_PROJECT_DIR: "" } });
 const refused = (fn, re) => assert.throws(fn, (e) => e && e.name === "Refused" && (!re || re.test(e.message)), String(fn));
 
 // ---------- the happy path and text that breaks shell quoting ----------
@@ -33,7 +35,7 @@ test("appends one line and never touches the existing bytes", () => {
 
 test("text with brackets, slashes, quotes, dollar signs, backticks, pipes and Arabic is written literally", () => {
   const p = project();
-  const nasty = "2026-11-13 15:55 CST - [Claude: مهمة zorcha-reply-after-publish] لا رد مطلوب (13/11) $HOME `x` $(whoami) ; | & > < \"q\" 'q' %s " + BS + "n " + BS + "U";
+  const nasty = "2026-11-13 15:55 CST - [Claude: مهمة example-task] لا رد مطلوب (13/11) $HOME `x` $(whoami) ; | & > < \"q\" 'q' %s " + BS + "n " + BS + "U";
   const r = cli(["--root", p, "--file", "Jobs/log.md", "--text", nasty]);
   assert.equal(r.status, 0, r.stderr);
   const lines = readFileSync(join(p, "Jobs", "log.md"), "utf8").split(LF);
@@ -83,7 +85,7 @@ test("newline, carriage return, NUL, escape, other control characters and line s
     for (let k = 0; k < 2; k++) refused(() => cleanLine(bad), /ONE line/); // twice: no regex state may leak between calls
   }
   const p = project(); const f = join(p, "Jobs", "log.md"); const h = sha(f);
-  assert.equal(spawnSync(process.execPath, [SCRIPT, "--root", p, "--file", "Jobs/log.md", "--text", "a" + LF + "- injected line"], { encoding: "utf8" }).status, 1);
+  assert.equal(cli(["--root", p, "--file", "Jobs/log.md", "--text", "a" + LF + "- injected line"]).status, 1);
   assert.equal(sha(f), h, "a newline injection wrote nothing");
 });
 
@@ -126,11 +128,12 @@ test("path traversal, absolute, drive, UNC, stream and special names are all ref
     "log.md", "CLAUDE.md", "src/x.md", "Jobsx/log.md", "xJobs/log.md", "node_modules/x.md", ".git/config", "Jobs", "MDs", "", "   ",
     "Jobs/log.py", "Jobs/log.json", "Jobs/log", "Jobs/log.md.exe", "MDs/HANDOVER.sh", "Jobs/.env",
     "Jobs/log" + C(0) + ".md", outside.replace(/\\/g, "/"),
+    BS + BS + "?" + BS + "C:" + BS + "x.md", BS + BS + "." + BS + "x.md", "Jobs/COM" + C(0xb9) + ".md", "Jobs/lpt" + C(0xb2) + ".txt", "Jobs/AUX.log", "Jobs/log.md" + C(32), "Jobs/a" + C(31) + "b.md", "Jobs/" + C(0xff0e) + C(0xff0e) + "/x.md",
   ];
   for (const rel of cases) {
     refused(() => resolveTarget(p, rel), undefined);
     if (rel.includes(C(0))) continue; // the operating system cannot pass a NUL in an argument; the module check above covers it
-    const r = spawnSync(process.execPath, [SCRIPT, "--root", p, "--file", rel, "--text", "x"], { encoding: "utf8" });
+    const r = cli(["--root", p, "--file", rel, "--text", "x"]);
     assert.equal(r.status, 1, `expected refusal for ${JSON.stringify(rel)}: ${r.stdout}${r.stderr}`);
     assert.match(r.stderr, /REFUSED|FAILED/);
   }
@@ -215,7 +218,7 @@ test("20 processes appending at once leave 20 intact lines and the old content u
   const p = project(); const f = join(p, "Jobs", "log.md"); const before = readFileSync(f);
   const n = 20;
   const codes = await Promise.all(Array.from({ length: n }, (_, i) => new Promise((res) => {
-    const c = spawn(process.execPath, [SCRIPT, "--root", p, "--file", "Jobs/log.md", "--text", "line-" + String(i).padStart(2, "0") + " " + "x".repeat(200)]);
+    const c = spawn(process.execPath, [SCRIPT, "--root", p, "--file", "Jobs/log.md", "--text", "line-" + String(i).padStart(2, "0") + " " + "x".repeat(200)], { cwd: p });
     c.on("close", res);
   })));
   assert.deepEqual(codes, Array(n).fill(0));
@@ -226,15 +229,16 @@ test("20 processes appending at once leave 20 intact lines and the old content u
   for (let i = 0; i < n; i++) assert.ok(lines[i].startsWith("line-" + String(i).padStart(2, "0") + " "), lines[i].slice(0, 12));
 });
 
-test("module API: run() returns what it wrote and appendLine never opens the file for writing except in append mode", () => {
+test("module API: run() returns what it wrote; the source writes only through one append-mode open and has no network or process", () => {
   const p = project();
   const r = run({ root: p, file: "Jobs/log.md", text: "api", stamp: true, now: new Date(2026, 0, 5, 7, 3) });
   assert.equal(r.line, "2026-01-05 07:03 api"); assert.equal(r.wrote, true);
-  const src = readFileSync(SCRIPT, "utf8");
-  assert.ok(!/writeFileSync|createWriteStream|renameSync|unlinkSync|rmSync|copyFileSync|truncateSync|ftruncate|appendFileSync/.test(src.replace(/\/\/.*$/gm, "")), "only openSync(a) + writeSync may write");
+  const src = readFileSync(SCRIPT, "utf8").replace(/\/\/.*$/gm, "");
+  assert.ok(!/writeFileSync|createWriteStream|renameSync|unlinkSync|rmSync|copyFileSync|truncateSync|ftruncate|appendFileSync|mkdirSync/.test(src), "only openSync + writeSync may write; no folder is created");
   assert.ok(!/child_process|node:http|node:https|node:net|fetch\(|process\.spawn|execSync/.test(src), "no network, no other process");
-  const opens = [...src.matchAll(/openSync\(([^)]*)\)/g)].map((m) => m[1].trim());
-  assert.ok(opens.every((o) => /"r"$|"a"$/.test(o)), "files are opened only for reading or appending: " + opens.join(" | "));
+  const opens = [...src.matchAll(/openSync\(([^;]*?)\)(?=[;:)\s])/g)].map((m) => m[1]);
+  assert.ok(opens.length >= 1 && opens.every((o) => /O_APPEND/.test(o) && !/O_TRUNC/.test(o)), "every open is an append open: " + opens.join(" | "));
+  assert.equal((src.match(/fs\.writeSync\(/g) || []).length, 1, "exactly one write call");
 });
 
 test("the folder tree of the project is unchanged by refusals (no stray files)", () => {
@@ -244,4 +248,92 @@ test("the folder tree of the project is unchanged by refusals (no stray files)",
   for (const rel of ["../x.md", "Jobs/log.py", "Jobs/a/b/c.md", "Other/x.md", "Jobs/x:y.md"]) cli(["--root", p, "--file", rel, "--text", "x", "--create"]);
   assert.equal(tree(), t0);
   assert.ok(statSync(join(p, "Jobs", "log.md")).size > 0);
+});
+
+// ---------- findings of the independent review ----------
+test("the session root: --root outside the folder the session runs in is refused; a folder inside it is fine", () => {
+  const p = project(); const other = project(); put(p, "sub/Jobs/log.md", "x" + LF);
+  const r = cli(["--root", other, "--file", "Jobs/log.md", "--text", "x"], { cwd: p });
+  assert.equal(r.status, 1); assert.match(r.stderr, /folder this session runs in/);
+  assert.equal(readFileSync(join(other, "Jobs", "log.md"), "utf8"), "# log" + LF + "- first" + LF, "the other project is untouched");
+  assert.equal(cli(["--root", join(p, "sub"), "--file", "Jobs/log.md", "--text", "inside"], { cwd: p }).status, 0);
+  const viaEnv = spawnSync(process.execPath, [SCRIPT, "--root", other, "--file", "Jobs/log.md", "--text", "env"], { encoding: "utf8", cwd: tmpdir(), env: { ...process.env, CLAUDE_PROJECT_DIR: other } });
+  assert.equal(viaEnv.status, 0, viaEnv.stderr);
+  refused(() => checkRoot(other, { env: {}, cwd: p }), /folder this session runs in/);
+  refused(() => checkRoot(join(p, "nope"), { env: {}, cwd: p }), /does not exist/);
+  refused(() => checkRoot(dirname(p), { env: {}, cwd: p }), /folder this session runs in/); // a parent of the session folder
+});
+
+test("started through a junction or link to the scripts folder it still runs (no silent exit 0)", (t) => {
+  const p = project(); const holder = tmp("pms-lnk-");
+  try { symlinkSync(join(ROOT, "scripts"), join(holder, "scripts"), "junction"); } catch { return t.skip("links not available"); }
+  const r = cli(["--root", p, "--file", "Jobs/log.md", "--text", "via junction"], { script: join(holder, "scripts", "joblog.mjs") });
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /OK appended/);
+  assert.match(readFileSync(join(p, "Jobs", "log.md"), "utf8"), /via junction/);
+  const up = cli(["--root", p, "--file", "Jobs/log.md", "--text", "other case"], { script: join(dirname(SCRIPT).toUpperCase(), "joblog.mjs") });
+  if (process.platform === "win32") { assert.equal(up.status, 0, up.stderr); assert.match(readFileSync(join(p, "Jobs", "log.md"), "utf8"), /other case/); }
+});
+
+test("hidden-character smuggling: Unicode tags, word joiners, soft hyphens and C1 controls; ZWNJ and ZWJ are kept", () => {
+  const tag = String.fromCodePoint(0xe0041) + String.fromCodePoint(0xe0042);
+  assert.equal(cleanLine("a" + tag + "b"), "ab");
+  assert.equal(cleanLine("a" + C(0x2060) + C(0xad) + C(0x180e) + C(0xfe0f) + C(0x3164) + "b"), "ab");
+  for (const bad of [C(0x9b), C(0x9d), C(0x80), C(0x9f)]) refused(() => cleanLine("a" + bad + "b"), /ONE line/);
+  assert.equal(cleanLine("می" + C(0x200c) + "خواهم"), "می" + C(0x200c) + "خواهم");
+  assert.equal(cleanLine("a" + C(0x200d) + "b"), "a" + C(0x200d) + "b");
+});
+
+test("broken UTF-8 (U+FFFD) and a trailing line ending: refused or dropped exactly as documented", () => {
+  refused(() => cleanLine("abc" + C(0xfffd)), /U\+FFFD/);
+  const p = project();
+  const r = spawnSync(process.execPath, [SCRIPT, "--root", p, "--file", "Jobs/log.md", "--stdin"], { input: Buffer.from([0x61, 0xff, 0xfe, 0x62]), cwd: p, encoding: "utf8" });
+  assert.equal(r.status, 1, "invalid UTF-8 on stdin is refused, not silently repaired");
+  assert.equal(cleanLine("abc" + LF), "abc"); assert.equal(cleanLine("abc" + CR + LF), "abc");
+  refused(() => cleanLine("abc" + LF + LF), /ONE line/);
+});
+
+test("a file that is not UTF-8 text (UTF-16, binary) is refused and left untouched", () => {
+  const p = project(); const f = join(p, "Jobs", "utf16.md");
+  writeFileSync(f, Buffer.from("h" + C(0) + "i" + C(0) + LF + C(0), "latin1")); const h = sha(f);
+  const r = cli(["--root", p, "--file", "Jobs/utf16.md", "--text", "x"]);
+  assert.equal(r.status, 1); assert.match(r.stderr, /UTF-8/); assert.equal(sha(f), h);
+});
+
+test("20 writers on a file with NO final newline: every line intact, old content untouched (blank lines are the documented race)", async () => {
+  const p = project(); put(p, "Jobs/nonl.md", "a" + LF + "b"); const f = join(p, "Jobs", "nonl.md");
+  const n = 20;
+  const codes = await Promise.all(Array.from({ length: n }, (_, i) => new Promise((res) => {
+    const c = spawn(process.execPath, [SCRIPT, "--root", p, "--file", "Jobs/nonl.md", "--text", "w-" + String(i).padStart(2, "0")], { cwd: p });
+    c.on("close", res);
+  })));
+  assert.deepEqual(codes, Array(n).fill(0));
+  const text = readFileSync(f, "utf8");
+  assert.ok(text.startsWith("a" + LF + "b" + LF), "old content intact");
+  const lines = text.split(LF).filter((l) => l.startsWith("w-")).sort();
+  assert.equal(lines.length, n);
+  for (let i = 0; i < n; i++) assert.equal(lines[i], "w-" + String(i).padStart(2, "0"));
+});
+
+test("a hard-linked file is refused at open time too, and the hard link count of other files is not touched", (t) => {
+  const p = project(); const f = join(p, "Jobs", "log.md");
+  try { linkSync(f, join(p, "Jobs", "alias.md")); } catch { return t.skip("hard links not available"); }
+  const h = sha(f);
+  assert.equal(cli(["--root", p, "--file", "Jobs/alias.md", "--text", "x"]).status, 1);
+  assert.equal(sha(f), h);
+});
+
+test("an existing file is never created or truncated by a failed append (read-only file)", (t) => {
+  const p = project(); const f = join(p, "Jobs", "ro.md"); writeFileSync(f, "keep" + LF, { mode: 0o444 }); const h = sha(f);
+  const r = cli(["--root", p, "--file", "Jobs/ro.md", "--text", "x"]);
+  if (r.status === 0) return t.skip("read-only attribute is not enforced for this user here");
+  assert.equal(r.status, 1); assert.equal(sha(f), h);
+});
+
+test("exit code and output: the success line names the file but never prints file contents or the root path", () => {
+  const p = project();
+  const r = cli(["--root", p, "--file", "Jobs/log.md", "--text", "SECRET-TEXT-123"]);
+  assert.equal(r.status, 0);
+  assert.ok(!r.stdout.includes("SECRET-TEXT-123") && !r.stdout.includes(p), r.stdout);
+  const bad = cli(["--root", p, "--file", "../" + "x.md", "--text", "SECRET-TEXT-123"]);
+  assert.ok(!bad.stderr.includes("SECRET-TEXT-123"), bad.stderr);
 });
