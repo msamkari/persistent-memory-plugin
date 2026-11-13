@@ -22,7 +22,7 @@ const handoverLine = () => {
 const offerLine = async (memoryDirSet) => {
   try {
     const { claimOffer } = await import("../scripts/onboarding.mjs");
-    return claimOffer({ root: process.env.CLAUDE_PROJECT_DIR || process.cwd(), env: process.env, memoryDirSet });
+    return claimOffer({ root: process.env.CLAUDE_PROJECT_DIR || process.cwd(), memoryDirSet });
   } catch { return ""; }
 };
 const emit = (text) => { process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: text } })); process.exit(0); };

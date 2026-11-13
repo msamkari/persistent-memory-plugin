@@ -11,6 +11,9 @@ import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { pick } from "./envpick.mjs";
+// the only environment variables the offer logic ever looks at
+const OFFER_ENV = ["PMS_SETUP_OFFER", "CLAUDE_PLUGIN_DATA", "PMS_DATA_DIR", "CLAUDE_PROJECT_DIR", "SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData"];
 
 const slash = (s) => String(s).replace(/\\/g, "/");
 const CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
@@ -25,7 +28,7 @@ export function normRoot(p) {
 }
 const isInside = (child, parent) => child === parent || child.startsWith(parent + "/");
 
-export function dataDir(env = process.env, explicit = "") {
+export function dataDir(env = pick(["CLAUDE_PLUGIN_DATA", "PMS_DATA_DIR"]), explicit = "") {
   const d = explicit || env.CLAUDE_PLUGIN_DATA || env.PMS_DATA_DIR || "";
   return d && path.isAbsolute(d) ? d : "";
 }
@@ -107,7 +110,7 @@ function systemDirs(env) {
   return ["/usr", "/etc", "/bin", "/sbin", "/lib", "/proc", "/sys", "/dev", "/boot", "/System", "/Library", "/Applications"].map(normRoot);
 }
 
-export function excludedReason(root, { env = process.env, home = os.homedir() } = {}) {
+export function excludedReason(root, { env = pick(OFFER_ENV), home = os.homedir() } = {}) {
   const n = normRoot(root), h = normRoot(home);
   if (n === "" || /^[a-z]:$/i.test(n)) return "drive root";
   if (n === h) return "home folder";
@@ -152,7 +155,7 @@ export const OFFER_TEXT = "persistent-memory: this folder looks like a project a
   + "If the user does not react, drop it. This note is shown at most twice per project: now, and once more after 14 days if nobody answered; a no stops it for good.";
 
 // Pure decision (no writes). Returns { offer, why }.
-export function decideOffer({ root, env = process.env, home = os.homedir(), memoryDirSet = false } = {}) {
+export function decideOffer({ root, env = pick(OFFER_ENV), home = os.homedir(), memoryDirSet = false } = {}) {
   const mode = String(env.PMS_SETUP_OFFER || "").trim().toLowerCase();
   if (["off", "0", "false", "no"].includes(mode)) return { offer: false, why: "switched off by PMS_SETUP_OFFER" };
   const data = dataDir(env);
@@ -175,7 +178,7 @@ export function decideOffer({ root, env = process.env, home = os.homedir(), memo
 // Used by the hook: records "offered" FIRST and returns the text only if the marker was written.
 // If the marker cannot be written (read-only folder, another session won the race), it returns "".
 export function claimOffer(opts = {}) {
-  const env = opts.env || process.env;
+  const env = opts.env || pick(OFFER_ENV);
   if (!decideOffer(opts).offer) return "";
   const data = dataDir(env);
   try {
@@ -192,7 +195,7 @@ function cli() {
   const cmd = args[0];
   const opt = (name) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : ""; };
   const root = path.resolve(opt("--root") || process.env.CLAUDE_PROJECT_DIR || process.cwd());
-  const data = dataDir(process.env, opt("--data"));
+  const data = dataDir(pick(["CLAUDE_PLUGIN_DATA", "PMS_DATA_DIR"]), opt("--data"));
   if (!["status", "decline", "reset", "off", "on"].includes(cmd)) {
     console.log("usage: node scripts/onboarding.mjs status|decline|reset|off|on [--root DIR] [--data DIR]");
     return 2;
@@ -203,7 +206,7 @@ function cli() {
     return cmd === "status" ? 0 : 2;
   }
   if (cmd === "status") {
-    const d = decideOffer({ root, env: { ...process.env, CLAUDE_PLUGIN_DATA: data } });
+    const d = decideOffer({ root, env: { ...pick(OFFER_ENV), CLAUDE_PLUGIN_DATA: data } });
     console.log(`memory system present: ${hasMemorySystem(root) ? "yes" : "no"}`);
     console.log(`recorded answer for this project: ${projectState(data, root) || "none"}`);
     console.log(`offers switched off everywhere: ${isGloballyOff(data) ? "yes" : "no"}`);
