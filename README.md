@@ -67,7 +67,7 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
 | SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. In a project with no memory system it adds one note, so Claude offers the setup (once, and one reminder 14 days later if nobody answered; a "no" ends it). Silent otherwise, and always silent in folders that are not projects |
 | Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once (in every turn) when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
-| PreToolUse approval gate | Claude Code / Cowork only | Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
+| PreToolUse approval gate | Claude Code / Cowork only | It can only deny or ask, never approve a command. Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push. Decisions are logged when the memory folder is set |
 
 Hooks and agents are ignored in claude.ai chat; the skill works everywhere.
 
@@ -113,7 +113,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 The session hook never changes your files (its only write is a marker in the plugin's own data folder, see the table above); the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## Tests
-`node --test tests/*.test.mjs` (206 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (211 checks, 1 of them skipped where symlinks are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Features by version
 
