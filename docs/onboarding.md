@@ -29,7 +29,7 @@ node scripts/onboarding.mjs decline --root <project> --data <data folder>   # re
 node scripts/onboarding.mjs reset   --root <project> --data <data folder>   # forget the answer: the offer may appear once more
 node scripts/onboarding.mjs off     --data <data folder>                    # no offers in any project (undo: on)
 ```
-Environment switch: `PMS_SETUP_OFFER=off` silences the offer everywhere. `PMS_SETUP_OFFER=always` also shows it (once per project) to users who have set a memory folder; by default those users see no change at all.
+Environment switch: `PMS_SETUP_OFFER=off` silences the offer everywhere. `PMS_SETUP_OFFER=always` also shows it (at most twice per project) to users who have set a memory folder; by default those users see no change at all.
 
 ## The setup (only after you say yes)
 ```
@@ -74,7 +74,7 @@ node scripts/archive.mjs init --root <project> [--write]        # starter MDs/ar
 [`vitals`](https://github.com/msamkari/vitals) is a separate plugin: an offline check that required files exist and that the state files are not older than the work. This plugin does not need it and never installs it. During setup Claude asks whether you want a starter config if `vitals` is installed (it prints a proposal with `--init` and writes `Jobs/inventory.config.json` only after you agree), and otherwise mentions once how to install it: `/plugin install vitals@samkari-plugins`.
 
 ## Limits
-- The offer is shown once per project. If that one session was unattended (a scheduled or non-interactive run), nobody saw it; use the skill `memory-setup` by name, or `reset`.
+- The offer is shown once, plus one reminder after 14 days if nobody answered (a second marker file, `<hash>.2.json`, written with exclusive create). A "no" (`decline`) is never reminded. If the first session was unattended (a scheduled or non-interactive run), nobody saw it; use the skill `memory-setup` by name, or `reset`.
 - Whether Claude actually says the sentence is model behaviour; the hook only supplies the note.
 - A folder with a single stray file can get the offer once.
 - Moving or renaming a project folder makes it a new project for this purpose.

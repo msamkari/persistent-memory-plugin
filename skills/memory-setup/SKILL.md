@@ -14,7 +14,7 @@ The plugin is installed once, for the user, and serves every folder. A project o
 ## 1. The user says no
 Record it so the offer never comes back for this project, then stop:
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/onboarding.mjs" decline --root "<project root>" --data "${CLAUDE_PLUGIN_DATA}"`
-If the user wants no offers in any project: the same command with `off` instead of `decline` (undo: `on`). The answer is stored in the plugin's own data folder, not in the project. If the command reports that the data folder is not known, say nothing more: the note is shown once per project anyway.
+If the user wants no offers in any project: the same command with `off` instead of `decline` (undo: `on`). The answer is stored in the plugin's own data folder, not in the project. If the command reports that the data folder is not known, say nothing more: the note is shown at most twice per project anyway.
 
 ## 2. The user says yes: show the plan first
 `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs" init --root "<project root>"` (add `--lang ar` for Arabic file text, `--show` to print the file bodies). This prints the plan and writes nothing. Show the list to the user and say in one line what each part is for:
