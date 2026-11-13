@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, symlinkSync, readdirSync, statSync, linkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { tmpdir, homedir } from "node:os";
+import { join, dirname, parse } from "node:path";
 import { spawnSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -277,7 +277,7 @@ test("started through a junction or link to the scripts folder it still runs (no
 test("hidden-character smuggling: Unicode tags, word joiners, soft hyphens and C1 controls; ZWNJ and ZWJ are kept", () => {
   const tag = String.fromCodePoint(0xe0041) + String.fromCodePoint(0xe0042);
   assert.equal(cleanLine("a" + tag + "b"), "ab");
-  assert.equal(cleanLine("a" + C(0x2060) + C(0xad) + C(0x180e) + C(0xfe0f) + C(0x3164) + "b"), "ab");
+  assert.equal(cleanLine("a" + C(0x2060) + C(0xad) + C(0x180e) + C(0xfe0e) + C(0x3164) + "b"), "ab");
   for (const bad of [C(0x9b), C(0x9d), C(0x80), C(0x9f)]) refused(() => cleanLine("a" + bad + "b"), /ONE line/);
   assert.equal(cleanLine("می" + C(0x200c) + "خواهم"), "می" + C(0x200c) + "خواهم");
   assert.equal(cleanLine("a" + C(0x200d) + "b"), "a" + C(0x200d) + "b");
@@ -336,4 +336,46 @@ test("exit code and output: the success line names the file but never prints fil
   assert.ok(!r.stdout.includes("SECRET-TEXT-123") && !r.stdout.includes(p), r.stdout);
   const bad = cli(["--root", p, "--file", "../" + "x.md", "--text", "SECRET-TEXT-123"]);
   assert.ok(!bad.stderr.includes("SECRET-TEXT-123"), bad.stderr);
+});
+
+// ---------- second review ----------
+test("lone surrogates are refused; emoji variation selector survives; more hiding places are removed", () => {
+  refused(() => cleanLine("a" + String.fromCharCode(0xd800) + "b"), /lone surrogate/);
+  refused(() => cleanLine(String.fromCharCode(0xdc00)), /lone surrogate/);
+  assert.equal(cleanLine(String.fromCodePoint(0x2764) + C(0xfe0f)), String.fromCodePoint(0x2764) + C(0xfe0f), "VS16 keeps the emoji");
+  assert.equal(cleanLine("a" + String.fromCodePoint(0xe0100) + String.fromCodePoint(0xe01ef) + C(0x115f) + C(0x1160) + C(0xffa0) + C(0x17b4) + C(0x2800) + "b"), "ab");
+});
+
+test("the session folder is CLAUDE_PROJECT_DIR when set (not the union with cwd); home and drive roots are never accepted", () => {
+  const p = project(); const other = project();
+  const r = spawnSync(process.execPath, [SCRIPT, "--root", other, "--file", "Jobs/log.md", "--text", "x"], { encoding: "utf8", cwd: other, env: { ...process.env, CLAUDE_PROJECT_DIR: p } });
+  assert.equal(r.status, 1, "cwd inside another project does not widen the session folder"); assert.match(r.stderr, /folder this session runs in/);
+  const drive = parse(tmpdir()).root;
+  refused(() => checkRoot(homedir(), { env: { CLAUDE_PROJECT_DIR: homedir() } }), /home folder/);
+  refused(() => checkRoot(drive, { env: { CLAUDE_PROJECT_DIR: drive } }), /drive or filesystem root/);
+});
+
+test("a root folder whose name starts with two dots is fine; a root that is a link to elsewhere is refused", (t) => {
+  const p = project(); put(p, "..odd/Jobs/log.md", "x" + LF);
+  assert.equal(cli(["--root", join(p, "..odd"), "--file", "Jobs/log.md", "--text", "ok"], { cwd: p }).status, 0);
+  const out = project();
+  try { symlinkSync(out, join(p, "linkroot"), "junction"); } catch { return t.skip("links not available"); }
+  const r = cli(["--root", join(p, "linkroot"), "--file", "Jobs/log.md", "--text", "x"], { cwd: p });
+  assert.equal(r.status, 1, "a junction to another project is resolved first, then refused"); assert.equal(readFileSync(join(out, "Jobs", "log.md"), "utf8"), "# log" + LF + "- first" + LF);
+});
+
+test("20 writers creating the SAME new file at once: every line lands (the loser of the create race appends)", async () => {
+  const p = project(); const f = join(p, "Jobs", "created.md"); const n = 20;
+  const codes = await Promise.all(Array.from({ length: n }, (_, i) => new Promise((res) => {
+    const c = spawn(process.execPath, [SCRIPT, "--root", p, "--file", "Jobs/created.md", "--text", "c-" + String(i).padStart(2, "0"), "--create"], { cwd: p });
+    c.on("close", res);
+  })));
+  assert.deepEqual(codes, Array(n).fill(0));
+  const lines = readFileSync(f, "utf8").split(LF).filter(Boolean).sort();
+  assert.equal(lines.length, n); assert.equal(new Set(lines).size, n);
+});
+
+test("device names with spaces or $ and a stdin that never delivers data", () => {
+  const p = project();
+  for (const rel of ["Jobs/nul .md", "Jobs/CONIN$.md", "Jobs/conout$.txt", "Jobs/aux  .log"]) refused(() => resolveTarget(p, rel, { create: true }), /reserved device name/);
 });

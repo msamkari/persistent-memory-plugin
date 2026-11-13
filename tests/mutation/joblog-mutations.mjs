@@ -26,11 +26,13 @@ const MUTATIONS = [
   ["create without --create", "} else if (!create) refuse(", "} else if (false) refuse("],
   ["no missing-newline repair", "if (!tail.endsWith(LF)) prefix = eol;", ""],
   ["ignore CRLF", "if (tail.includes(CRLF)) eol = CRLF;", ""],
-  ["accept roots outside the session", "if (!ok) refuse(", "if (false) refuse("],
+  ["accept roots outside the session", "if (!inside) refuse(", "if (false) refuse("],
   ["no hard-link check at open", "if (st.nlink > 1) refuse(", "if (false) refuse(", "known"], // second layer: the first check (before the open) already refuses; only a race could reach this one
   ["no non-UTF-8 file check", "if (buf.includes(0)) refuse(", "if (false) refuse("],
   ["accept U+FFFD", "if (t.includes(BAD_CHAR)) refuse(", "if (false) refuse("],
-  ["keep Unicode tag characters", ", [0xe0000, 0xe007f]]", "]"],
+  ["keep Unicode tag characters", ", [0xe0000, 0xe007f], [0xe0100, 0xe01ef]", ""],
+  ["accept lone surrogates", 'if (typeof text.isWellFormed === "function" && !text.isWellFormed())', "if (false)"],
+  ["accept the home folder as root", "if (home && real.toLowerCase() === home.toLowerCase()) refuse(", "if (false) refuse("],
   ["strict main-module guard (silent exit through links)", "sameFile(process.argv[1], fileURLToPath(import.meta.url))", "path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)"],
   ["ignore a short write", 'if (written !== data.length) throw new Error("PARTIAL_WRITE");', "", "known"],
 ];

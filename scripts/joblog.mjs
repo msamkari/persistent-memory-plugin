@@ -19,21 +19,26 @@
 // MDs/, other extensions, symbolic links and junctions (file or any folder on the way), files with several hard
 // links, files that are not UTF-8 text (a NUL near the end), a missing file without --create.
 // Exit codes: 0 appended (or dry-run ok), 1 refused or failed, 2 usage error.
+// The session folder is CLAUDE_PROJECT_DIR when set, otherwise the current folder; a caller that can run compound shell
+// commands (cd elsewhere && node ...) can still choose another folder, so keep the permission rule to this one command
+// and keep the session's own permission system on. Anything under MDs/ (HANDOVER.md for example) is read by later
+// sessions: treat text written here as data, never as instructions.
 // Honest limit: the checks run before the file is opened; the open itself refuses links where the platform allows
 // (O_NOFOLLOW on Linux/macOS) and the opened file is re-checked, but on Windows a link swapped in between the check
 // and the open by a process that can already write inside the project is not detected.
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 // character classes are built from code points (no escape sequences in the source)
 const cls = (ranges, flags) => new RegExp("[" + ranges.map(([a, b]) => String.fromCodePoint(a) + "-" + String.fromCodePoint(b)).join("") + "]", flags);
 const CONTROL = cls([[0, 8], [10, 31], [127, 159], [0x2028, 0x2029]], "u"); // no g flag: test() must not keep state
 const INVISIBLE = cls([[0x00ad, 0x00ad], [0x034f, 0x034f], [0x061c, 0x061c], [0x180b, 0x180e], [0x200b, 0x200b], [0x200e, 0x200f],
-  [0x202a, 0x202e], [0x2060, 0x206f], [0x3164, 0x3164], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0xfff9, 0xfffb], [0xe0000, 0xe007f]], "gu");
+  [0x202a, 0x202e], [0x2060, 0x206f], [0x3164, 0x3164], [0xfe00, 0xfe0e], [0xfeff, 0xfeff], [0xfff9, 0xfffb], [0xe0000, 0xe007f], [0xe0100, 0xe01ef], [0x115f, 0x1160], [0x17b4, 0x17b5], [0x2800, 0x2800], [0xffa0, 0xffa0]], "gu");
 const LF = String.fromCharCode(10), CR = String.fromCharCode(13), CRLF = CR + LF;
 const BAD_CHAR = String.fromCharCode(0xfffd);
-const RESERVED = new RegExp("^(con|prn|aux|nul|(com|lpt)[1-9" + String.fromCharCode(0xb9, 0xb2, 0xb3) + "])([.]|$)", "i");
+const RESERVED = new RegExp("^(con|prn|aux|nul|conin[$]|conout[$]|(com|lpt)[1-9" + String.fromCharCode(0xb9, 0xb2, 0xb3) + "])[ ]*([.]|$)", "i");
 
 export const MAX_LINE = 2000;
 export const MAX_STDIN = 20000;
@@ -47,6 +52,7 @@ const refuse = (m) => { throw new Refused(m); };
 // ---- text ----
 export function cleanLine(text, { stamp = false, now = new Date() } = {}) {
   if (typeof text !== "string") refuse("no text given");
+  if (typeof text.isWellFormed === "function" && !text.isWellFormed()) refuse("the text contains a lone surrogate (not valid Unicode)");
   let t = text.normalize("NFC");
   // echo/heredoc/stdin add one trailing line ending: that one is not part of the text
   if (t.endsWith(CRLF)) t = t.slice(0, -2); else if (t.endsWith(LF)) t = t.slice(0, -1);
@@ -67,9 +73,16 @@ export function checkRoot(root, { env = process.env, cwd = process.cwd() } = {})
   let real;
   try { real = fs.realpathSync.native(path.resolve(root)); } catch { refuse("the project root does not exist"); }
   if (!fs.statSync(real).isDirectory()) refuse("the project root is not a folder");
-  const home = [env.CLAUDE_PROJECT_DIR, cwd].filter(Boolean).map((d) => { try { return fs.realpathSync.native(path.resolve(d)); } catch { return ""; } }).filter(Boolean);
-  const ok = home.some((h) => { const rel = path.relative(h, real); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)); });
-  if (!ok) refuse("--root must be the folder this session runs in (CLAUDE_PROJECT_DIR or the current folder) or a folder inside it");
+  if (path.parse(real).root === real) refuse("a drive or filesystem root is not a project folder");
+  let home = "";
+  try { home = fs.realpathSync.native(os.homedir()); } catch { /* unknown */ }
+  if (home && real.toLowerCase() === home.toLowerCase()) refuse("the home folder is not a project folder");
+  // the session's folder: CLAUDE_PROJECT_DIR when the session sets it, otherwise the current folder (never both)
+  let base;
+  try { base = fs.realpathSync.native(path.resolve(env.CLAUDE_PROJECT_DIR || cwd)); } catch { refuse("the session folder does not exist"); }
+  const rel = path.relative(base, real);
+  const inside = rel === "" || (rel !== ".." && !rel.startsWith(".." + path.sep) && !path.isAbsolute(rel));
+  if (!inside) refuse("--root must be the folder this session runs in (CLAUDE_PROJECT_DIR, or the current folder when it is not set) or a folder inside it");
   return real;
 }
 
@@ -106,7 +119,7 @@ export function resolveTarget(root, rel, { create = false } = {}) {
   }
   const target = path.join(cur, parts[parts.length - 1]);
   const inside = path.relative(realRoot, target);
-  if (!inside || inside.startsWith("..") || path.isAbsolute(inside)) refuse("the file resolves outside the project");
+  if (!inside || inside === ".." || inside.startsWith(".." + path.sep) || path.isAbsolute(inside)) refuse("the file resolves outside the project");
   let lst = null;
   try { lst = fs.lstatSync(target); } catch { /* does not exist */ }
   if (lst) {
@@ -128,9 +141,14 @@ export function appendLine(target, line, { dryRun = false } = {}) {
   // ONE open for the whole operation. An existing file is opened for append (+read of its tail), never created
   // or truncated; a new file is created exclusively.
   let fd;
+  const openExisting = () => fs.openSync(target, C.O_RDWR | C.O_APPEND | NOFOLLOW);
   try {
-    fd = before ? fs.openSync(target, C.O_RDWR | C.O_APPEND | NOFOLLOW) : fs.openSync(target, C.O_WRONLY | C.O_APPEND | C.O_CREAT | C.O_EXCL | NOFOLLOW, 0o644);
-  } catch (e) { refuse(`could not open the file (${e && e.code ? e.code : "error"})`); }
+    fd = before ? openExisting() : fs.openSync(target, C.O_WRONLY | C.O_APPEND | C.O_CREAT | C.O_EXCL | NOFOLLOW, 0o644);
+  } catch (e) {
+    if (!before && e && e.code === "EEXIST") { // another writer created it a moment ago: append to it like any existing file
+      try { before = fs.lstatSync(target); fd = openExisting(); } catch (e2) { refuse(`could not open the file (${e2 && e2.code ? e2.code : "error"})`); }
+    } else refuse(`could not open the file (${e && e.code ? e.code : "error"})`);
+  }
   try {
     const st = fs.fstatSync(fd);
     if (!st.isFile()) refuse("the opened target is not a regular file");
@@ -166,9 +184,14 @@ function readStdin() {
   const chunks = [];
   let total = 0;
   const buf = Buffer.alloc(4096);
+  let waits = 0;
   for (;;) {
     let n;
-    try { n = fs.readSync(0, buf, 0, buf.length, null); } catch (e) { if (e.code === "EOF") break; if (e.code === "EAGAIN") continue; throw e; }
+    try { n = fs.readSync(0, buf, 0, buf.length, null); } catch (e) {
+      if (e.code === "EOF") break;
+      if (e.code === "EAGAIN") { if (++waits > 300) refuse("stdin gave no data for 3 seconds"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); continue; }
+      throw e;
+    }
     if (!n) break;
     total += n;
     if (total > MAX_STDIN) refuse(`stdin is larger than ${MAX_STDIN} bytes`);
@@ -205,4 +228,7 @@ export function cli(argv, env = process.env, cwd = process.cwd()) {
 // run only when started as a script; compare REAL paths so a start through a link, junction, 8.3 name or other letter
 // case (for example from a plugin cache) still runs instead of silently doing nothing
 const sameFile = (a, b) => { try { return fs.realpathSync.native(a).toLowerCase() === fs.realpathSync.native(b).toLowerCase(); } catch { return false; } };
-if (process.argv[1] && sameFile(process.argv[1], fileURLToPath(import.meta.url))) process.exitCode = cli(process.argv.slice(2));
+if (process.argv[1]) {
+  if (sameFile(process.argv[1], fileURLToPath(import.meta.url))) process.exitCode = cli(process.argv.slice(2));
+  else if (/joblog[.]mjs$/i.test(process.argv[1])) { console.error("REFUSED: could not confirm that this script was started directly (real paths differ or cannot be read). Nothing was written."); process.exitCode = 1; }
+}
