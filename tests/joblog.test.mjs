@@ -76,7 +76,9 @@ test("a file without a final newline is finished first; CRLF files stay CRLF", (
 test("Arabic file and folder names, and spaces, work", () => {
   const p = tmp("pms-jl-"); put(p, "Jobs/سجل العمل.md", "x" + LF);
   assert.equal(cli(["--root", p, "--file", "Jobs/سجل العمل.md", "--text", "ok"]).status, 0);
-  assert.equal(cli(["--root", p, "--file", "jobs/سجل العمل.md", "--text", "ok2"]).status, 0, "folder name is case-insensitive");
+  // the allow-list ignores letter case, but the folder must exist as written: only case-insensitive file systems accept "jobs" for "Jobs"
+  const lower = cli(["--root", p, "--file", "jobs/سجل العمل.md", "--text", "ok2"]);
+  assert.equal(lower.status, process.platform === "linux" ? 1 : 0, lower.stderr);
 });
 
 // ---------- text that must be refused ----------
