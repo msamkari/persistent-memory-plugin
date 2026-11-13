@@ -299,3 +299,12 @@ test("fixture: a project that already uses the plugin starts exactly as it did (
   assert.deepEqual(tree(p), before);
   assert.match(setup(p).stdout, /KEEP \(exists\) {2}MDs\/freshness\.json/);
 });
+
+test("a project name with replacement patterns ($&, $`) is written literally", () => {
+  const parent = tmp("pms-dollar-");
+  const p = join(parent, "A$&B$`C");
+  put(parent, "A$&B$`C/x.txt");
+  const r = setup(p, "--write");
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.ok(read(p, "MDs/HANDOVER.md").includes("A$&B$`C"));
+});

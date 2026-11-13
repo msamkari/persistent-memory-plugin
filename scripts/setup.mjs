@@ -28,7 +28,7 @@ const json = (o) => JSON.stringify(o, null, 2) + "\n";
 function handoverText(lang, project, date) {
   const name = lang === "ar" ? "HANDOVER.start.ar.md" : "HANDOVER.start.md";
   return fs.readFileSync(path.join(TEMPLATES, name), "utf8").replace(/\r\n/g, "\n")
-    .replaceAll("{{project}}", project).replaceAll("{{date}}", date);
+    .replaceAll("{{project}}", () => project).replaceAll("{{date}}", () => date);
 }
 function logText(lang, project, date) {
   return lang === "ar"

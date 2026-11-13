@@ -96,11 +96,16 @@ export function excludedReason(root, { env = process.env, home = os.homedir() } 
   if (isInside(h, n)) return "above the home folder";
   if (n.split("/").some((seg) => seg === "node_modules" || seg === ".git")) return "inside a dependency or git folder";
   if (isInside(n, h)) {
-    const first = n.slice(h.length + 1).split("/")[0];
-    const rest = n.slice(h.length + 1).includes("/");
+    // Compared in lower case on every platform: "Documents" on Linux is the same standard folder as "documents".
+    const segs = n.slice(h.length + 1).split("/");
+    const first = segs[0].toLowerCase();
+    const second = (segs[1] || "").toLowerCase();
+    const syncRoot = (x) => x.startsWith("onedrive") || x === "dropbox" || x === "icloud drive" || x === "google drive";
     if (first.startsWith(".")) return "inside a hidden folder of the home folder";
     if (first === "appdata" || (first === "library" && process.platform === "darwin")) return "inside an application data folder";
-    if (!rest && (HOME_CHILDREN.has(first) || first.startsWith("onedrive"))) return "a standard home folder, not a project";
+    if (segs.length === 1 && (HOME_CHILDREN.has(first) || first.startsWith("onedrive"))) return "a standard home folder, not a project";
+    // Known Folder Move: OneDrive\Documents and OneDrive\Desktop are the same standard folders one level down.
+    if (segs.length === 2 && syncRoot(first) && HOME_CHILDREN.has(second)) return "a standard home folder, not a project";
   }
   if (systemDirs(env).some((s) => s && isInside(n, s))) return "system folder";
   return "";
