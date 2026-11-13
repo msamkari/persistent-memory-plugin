@@ -116,7 +116,7 @@ MyProject/
 
 ## الاختبارات
 
-`node --test tests/*.test.mjs` (201 فحصاً، واحد منها يُتخطّى حين لا تتوفر الروابط الرمزية)؛ يشغّلها CI على Ubuntu وWindows وmacOS، ويشغّل `claude plugin eval .` لفحص التفعيل وسلوك المدقّق.
+`node --test tests/*.test.mjs` (206 فحصاً، واحد منها يُتخطّى حين لا تتوفر الروابط الرمزية)؛ يشغّلها CI على Ubuntu وWindows وmacOS، ويشغّل `claude plugin eval .` لفحص التفعيل وسلوك المدقّق.
 
 ## الميزات حسب الإصدار
 
