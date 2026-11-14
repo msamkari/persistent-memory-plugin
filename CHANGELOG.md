@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.8.3 (2026-11-14)
+- Third round for the plugin directory's validation (1.8.2 still held the credential-read finding): `scripts/onboarding.mjs` no longer reads any system environment variable (SystemRoot, windir, ProgramFiles, ProgramData); on Windows it uses the fixed standard system folders. The only variables read are the plugin's own (`PMS_SETUP_OFFER`, `CLAUDE_PLUGIN_DATA`, `PMS_DATA_DIR`, `CLAUDE_PROJECT_DIR`). The privacy-link test no longer spells the repository host next to template references. No other change.
+
 ## 1.8.2 (2026-11-14)
 - Second round for the plugin directory's validation (1.8.1 went from 11 holds to 3): the Windows system-folder list in `scripts/onboarding.mjs` read its environment variables through a computed name, which the directory reads as a credential read; each one is now read by its literal name (the 32-bit Program Files variable is no longer used). A test file wrote a URL with escaped slashes next to environment references and was held for that; the URL check no longer uses a regular expression. A new test keeps every script, hook and test free of bracket or computed environment reads. No change to what the plugin does. 215 tests in total.
 ## 1.8.1 (2026-11-14)

@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.8.2)
+# Persistent Memory — a Claude plugin (v1.8.3)
 
 [العربية: README.ar.md](README.ar.md)
 
