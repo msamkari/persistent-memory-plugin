@@ -68,3 +68,15 @@ test("plugin.json links the privacy policy, support and terms, and those pages e
   assert.match(read("docs/PRIVACY.md"), /sends nothing|Nothing\. The plugin does not contact any server/i);
   assert.match(read("docs/PRIVACY.md"), /## Terms of use/);
 });
+
+test("the listing icon is a square PNG between 512 and 2048 px and under 2 MB", () => {
+  const f = join(root, ".claude-plugin", "icon.png");
+  assert.ok(existsSync(f), "missing .claude-plugin/icon.png");
+  const b = readFileSync(f);
+  assert.equal(b.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", "not a PNG");
+  const w = b.readUInt32BE(16), h = b.readUInt32BE(20);
+  assert.equal(w, h, "the icon must be square");
+  assert.ok(w >= 512 && w <= 2048, "width " + w);
+  assert.ok(b.length < 2 * 1024 * 1024, "size " + b.length);
+});
+
