@@ -1,0 +1,2 @@
+# shell wrappers must keep LF endings on every platform: a CR makes bash fail
+*.sh text eol=lf
