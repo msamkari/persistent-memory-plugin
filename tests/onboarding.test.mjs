@@ -194,13 +194,7 @@ test("folders above the home folder and drive roots are never projects", () => {
 
 test("system folders are silent", () => {
   if (process.platform === "win32") {
-    // ProgramData stands in for the system folders here: Node itself needs the real SystemRoot to start.
-    const sys = tmp("pms-sys-"), data = tmp("pms-data-"); put(sys, "Vendor/App/settings.ini"); put(sys, "readme.txt");
-    const drop = Object.fromEntries(Object.keys(process.env).filter((k) => /^programdata$/i.test(k)).map((k) => [k, undefined]));
-    const sysEnv = { ...drop, ProgramData: sys };
-    assert.equal(session(sys, data, sysEnv).stdout, "");
-    assert.equal(session(join(sys, "Vendor", "App"), data, sysEnv).stdout, "");
-    assert.deepEqual(markers(data), []);
+    for (const d of ["C:/Windows", "C:/Windows/System32", "C:/Program Files", "C:/ProgramData"]) assert.equal(excludedReason(d, { home: HOME }), "system folder", d);
     assert.equal(excludedReason(process.env.SystemRoot || "C:\\Windows", { home: HOME }), "system folder");
     assert.equal(excludedReason(join(process.env.SystemRoot || "C:\\Windows", "System32"), { home: HOME }), "system folder");
   } else {

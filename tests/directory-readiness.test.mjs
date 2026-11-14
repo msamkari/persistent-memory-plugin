@@ -84,7 +84,7 @@ test("the approval gate can only deny or ask, never allow", () => {
 
 test("plugin.json links the privacy policy, support and terms, and those pages exist in both languages", () => {
   const m = JSON.parse(read(".claude-plugin/plugin.json"));
-  for (const k of ["privacyPolicyUrl", "supportUrl", "termsOfServiceUrl"]) assert.ok(m[k].startsWith("https://github.com/msamkari/persistent-memory-plugin/"), k);
+  for (const k of ["privacyPolicyUrl", "supportUrl", "termsOfServiceUrl"]) assert.ok(m[k].startsWith(m.homepage + "/"), k);
   assert.ok(m.privacyPolicyUrl.endsWith("/docs/PRIVACY.md") && existsSync(join(root, "docs", "PRIVACY.md")) && existsSync(join(root, "docs", "PRIVACY.ar.md")));
   const heads = (f) => (read(f).match(/^## /gm) || []).length;
   assert.equal(heads("docs/PRIVACY.md"), heads("docs/PRIVACY.ar.md"));
