@@ -2,6 +2,7 @@
 // Start-of-session read cost for the Persistent Memory folder. Read-only, no network, writes nothing.
 // Usage: node cost.mjs <memory_dir>   (or env CLAUDE_PLUGIN_OPTION_MEMORY_DIR / PMS_MEMORY_DIR)
 // Token figures are ESTIMATES (see ESTIMATE_NOTE). Thresholds only produce a suggestion; nothing is changed.
+import { pick } from "./envpick.mjs";
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +19,7 @@ export function estimateTokens(buf) {
   return Math.round(ascii * TOKENS_PER_ASCII_BYTE + other * TOKENS_PER_NONASCII_BYTE);
 }
 
-export function thresholds(env = process.env) {
+export function thresholds(env = pick(["PMS_WARN_FILE_KB", "PMS_WARN_TOTAL_KB"])) {
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
   return { fileKB: num(env.PMS_WARN_FILE_KB, 60), totalKB: num(env.PMS_WARN_TOTAL_KB, 150) };
 }

@@ -1,5 +1,7 @@
-// Pure decision rules for the approval gate (no I/O), unit-tested.
-export function decide(cmd, env = process.env) {
+// Pure decision rules for the approval gate (no I/O), unit-tested. The gate can only return "deny" or "ask", never "allow":
+// it cannot approve a command, it can only stop one or ask the user.
+import { pick } from "./envpick.mjs";
+export function decide(cmd, env = pick(["PMS_ALLOW_TRAILERS"])) {
   if (typeof cmd !== "string" || !cmd) return null;
   const publishes = /\bgit\s+(?:-\S+\s+)*(?:commit|tag)\b|\bgh\s+pr\s+(?:create|edit)\b/.test(cmd);
   const signature = /Co-Authored-By:|Claude-Session:|claude\.ai\/code\/session|Generated with \[?Claude Code/i.test(cmd);
