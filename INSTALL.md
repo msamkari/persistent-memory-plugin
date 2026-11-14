@@ -84,23 +84,11 @@ On macOS and Linux the "shell" is usually zsh or bash and runs inside Terminal; 
 
 ## 3. Install Claude Code / تثبيت Claude Code
 
-**Windows, PowerShell (`PS` prompt):**
+Install Claude Code by following the official instructions for your system (they give the exact command for PowerShell, CMD, macOS and Linux and are always current):
 
-```powershell
-irm https://claude.ai/install.ps1 | iex
-```
+https://docs.claude.com/en/docs/claude-code/setup
 
-**Windows, Command Prompt (CMD):**
-
-```cmd
-curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd
-```
-
-**macOS / Linux:**
-
-```bash
-curl -fsSL https://claude.ai/install.sh | bash
-```
+ثبّت Claude Code باتباع التعليمات الرسمية لنظامك (فيها الأمر المناسب لـ PowerShell وCMD وmacOS وLinux وهي محدّثة دائماً).
 
 If the installer says the install folder is not in your `PATH` (Windows: `C:\Users\<you>\.local\bin`), add it. In PowerShell:
 إذا ذكر المثبّت أن المجلد غير موجود في PATH فأضفه. في PowerShell:
@@ -195,7 +183,6 @@ The Claude Code terminal and the desktop app share the marketplace installation,
 | Message or symptom / الرسالة أو العَرَض | Cause / السبب | Fix / الحل |
 |---|---|---|
 | `claude : The term 'claude' is not recognized` | Install folder not in `PATH` | Add it (step 3), reopen the terminal. Meanwhile run `& "$env:USERPROFILE\.local\bin\claude.exe"` |
-| `iex : The term 'iex' is not recognized` | The command was pasted with a stray character at the end (e.g. `^Q`) | Retype the line without extra characters |
 | `Failed to clone marketplace repository: Command 'git' not found` | Git is not installed, or the terminal was not reopened after installing it | Install Git (step 1), reopen the terminal, check `git --version` |
 | `SessionStart:startup hook error ... Executable not found in $PATH: "node"` | Node.js is not installed, or the terminal was not reopened | Install Node.js (step 1), reopen the terminal, check `node --version` |
 | Commands run but Claude only proposes plans; `Enabled plan mode` appeared | Plan mode is on (`/plan` or Shift+Tab) | Press **Shift+Tab** until the footer shows `auto mode on` |

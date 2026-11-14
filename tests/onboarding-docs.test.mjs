@@ -41,8 +41,8 @@ test("memory-setup keeps the consent rule, the decline step and the vitals rule 
   assert.doesNotMatch(front, /disable-model-invocation/); // the session note asks Claude to use it
   assert.match(s, /Write nothing in the project until the user has said yes in chat/);
   assert.match(s, /The session-start note is not consent/);
-  assert.ok(s.includes('onboarding.mjs decline --root "<project root>" --data "${CLAUDE_PLUGIN_DATA}"'));
-  assert.ok(s.includes('setup.mjs init --root "<project root>"'));
+  assert.ok(s.includes('onboarding.sh decline --root "<project root>" --data "${CLAUDE_PLUGIN_DATA}"'));
+  assert.ok(s.includes('setup.sh init --root "<project root>"'));
   assert.match(s, /This prints the plan and writes nothing/);
   assert.match(s, /\/plugin install vitals@samkari-plugins/);
   assert.match(s, /Do not install it, and do not run any install command yourself/);
@@ -61,9 +61,9 @@ test("the offer text itself forbids writing without a yes and names the skill", 
 test("the new skills run the plugin's scripts in place: no script is copied into a project", () => {
   for (const d of ["memory-setup", "memory-archive"]) {
     const s = read(`skills/${d}/SKILL.md`);
-    const cmds = [...s.matchAll(/node (\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[a-z-]+\.mjs)/g)].map((m) => m[1]);
+    const cmds = [...s.matchAll(/bash (\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/[a-z-]+\.sh)/g)].map((m) => m[1]);
     assert.ok(cmds.length > 0, d);
-    for (const c of cmds) assert.match(c, /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/(setup|archive|onboarding)\.mjs$/);
+    for (const c of cmds) assert.match(c, /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/(setup|archive|onboarding)\.sh$/);
   }
   assert.deepEqual(readdirSync(join(root, "skills", "memory-setup", "templates")).sort(), ["HANDOVER.start.ar.md", "HANDOVER.start.md"]);
   assert.doesNotMatch(code("scripts/setup.mjs").join("\n"), /copyFileSync|\.mjs"\s*,\s*root/);
