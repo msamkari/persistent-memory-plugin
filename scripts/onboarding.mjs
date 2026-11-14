@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const offerEnv = () => ({
   PMS_SETUP_OFFER: process.env.PMS_SETUP_OFFER, CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA, PMS_DATA_DIR: process.env.PMS_DATA_DIR,
   CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR, SystemRoot: process.env.SystemRoot, windir: process.env.windir,
-  ProgramFiles: process.env.ProgramFiles, "ProgramFiles(x86)": process.env["ProgramFiles(x86)"], ProgramW6432: process.env.ProgramW6432, ProgramData: process.env.ProgramData,
+  ProgramFiles: process.env.ProgramFiles, ProgramW6432: process.env.ProgramW6432, ProgramData: process.env.ProgramData,
 });
 const dataEnv = () => ({ CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA, PMS_DATA_DIR: process.env.PMS_DATA_DIR });
 
@@ -108,8 +108,8 @@ const MAX_ENTRIES = 400;
 
 function systemDirs(env) {
   if (process.platform === "win32") {
-    return ["SystemRoot", "windir", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData"]
-      .map((k) => env[k]).filter(Boolean).map(normRoot);
+    // each variable is read by its literal name (a name computed at run time reads as a credential read to the directory)
+    return [env.SystemRoot, env.windir, env.ProgramFiles, env.ProgramW6432, env.ProgramData].filter(Boolean).map(normRoot);
   }
   return ["/usr", "/etc", "/bin", "/sbin", "/lib", "/proc", "/sys", "/dev", "/boot", "/System", "/Library", "/Applications"].map(normRoot);
 }

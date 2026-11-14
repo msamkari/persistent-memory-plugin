@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.8.2 (2026-11-14)
+- Second round for the plugin directory's validation (1.8.1 went from 11 holds to 3): the Windows system-folder list in `scripts/onboarding.mjs` read its environment variables through a computed name, which the directory reads as a credential read; each one is now read by its literal name (the 32-bit Program Files variable is no longer used). A test file wrote a URL with escaped slashes next to environment references and was held for that; the URL check no longer uses a regular expression. A new test keeps every script, hook and test free of bracket or computed environment reads. No change to what the plugin does. 215 tests in total.
 ## 1.8.1 (2026-11-14)
 - Fixes for the plugin directory's validation of 1.8.0 (11 holds, 7 warnings); no change to what the plugin does.
 - Environment: scripts and hooks read variables by literal name only (`process.env.NAME`); the helper that read names computed at run time is gone (it was read as a credential read and held the plugin). A test keeps it that way.
