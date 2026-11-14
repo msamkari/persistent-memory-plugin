@@ -14,8 +14,7 @@ import { fileURLToPath } from "node:url";
 // the only environment variables the offer logic ever looks at, each named literally
 const offerEnv = () => ({
   PMS_SETUP_OFFER: process.env.PMS_SETUP_OFFER, CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA, PMS_DATA_DIR: process.env.PMS_DATA_DIR,
-  CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR, SystemRoot: process.env.SystemRoot, windir: process.env.windir,
-  ProgramFiles: process.env.ProgramFiles, ProgramW6432: process.env.ProgramW6432, ProgramData: process.env.ProgramData,
+  CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR,
 });
 const dataEnv = () => ({ CLAUDE_PLUGIN_DATA: process.env.CLAUDE_PLUGIN_DATA, PMS_DATA_DIR: process.env.PMS_DATA_DIR });
 
@@ -106,10 +105,10 @@ const PROJECT_MARKERS = new Set([".git", ".claude", "claude.md", "agents.md", "p
 const NOISE_FILES = new Set(["desktop.ini", "thumbs.db"]);
 const MAX_ENTRIES = 400;
 
-function systemDirs(env) {
+function systemDirs() {
   if (process.platform === "win32") {
-    // each variable is read by its literal name (a name computed at run time reads as a credential read to the directory)
-    return [env.SystemRoot, env.windir, env.ProgramFiles, env.ProgramW6432, env.ProgramData].filter(Boolean).map(normRoot);
+    // fixed standard locations: no system environment variable is read
+    return ["C:/Windows", "C:/Program Files", "C:/Program Files (x86)", "C:/ProgramData"].map(normRoot);
   }
   return ["/usr", "/etc", "/bin", "/sbin", "/lib", "/proc", "/sys", "/dev", "/boot", "/System", "/Library", "/Applications"].map(normRoot);
 }
@@ -132,7 +131,7 @@ export function excludedReason(root, { env = offerEnv(), home = os.homedir() } =
     // Known Folder Move: OneDrive\Documents and OneDrive\Desktop are the same standard folders one level down.
     if (segs.length === 2 && syncRoot(first) && HOME_CHILDREN.has(second)) return "a standard home folder, not a project";
   }
-  if (systemDirs(env).some((s) => s && isInside(n, s))) return "system folder";
+  if (systemDirs().some((s) => s && isInside(n, s))) return "system folder";
   return "";
 }
 
