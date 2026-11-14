@@ -84,7 +84,7 @@ test("the approval gate can only deny or ask, never allow", () => {
 
 test("plugin.json links the privacy policy, support and terms, and those pages exist in both languages", () => {
   const m = JSON.parse(read(".claude-plugin/plugin.json"));
-  for (const k of ["privacyPolicyUrl", "supportUrl", "termsOfServiceUrl"]) assert.match(m[k], /^https:\/\/github\.com\/msamkari\/persistent-memory-plugin\//, k);
+  for (const k of ["privacyPolicyUrl", "supportUrl", "termsOfServiceUrl"]) assert.ok(m[k].startsWith("https://github.com/msamkari/persistent-memory-plugin/"), k);
   assert.ok(m.privacyPolicyUrl.endsWith("/docs/PRIVACY.md") && existsSync(join(root, "docs", "PRIVACY.md")) && existsSync(join(root, "docs", "PRIVACY.ar.md")));
   const heads = (f) => (read(f).match(/^## /gm) || []).length;
   assert.equal(heads("docs/PRIVACY.md"), heads("docs/PRIVACY.ar.md"));
@@ -101,5 +101,15 @@ test("the listing icon is a square PNG between 512 and 2048 px and under 2 MB", 
   assert.equal(w, h, "the icon must be square");
   assert.ok(w >= 512 && w <= 2048, "width " + w);
   assert.ok(b.length < 2 * 1024 * 1024, "size " + b.length);
+});
+
+
+test("no script, hook or test source reads an environment variable through a computed name or a bracket", () => {
+  const dirs = ["scripts", "hooks", "tests"];
+  for (const d of dirs) for (const f of readdirSync(join(root, d)).filter((x) => x.endsWith(".mjs"))) {
+    if (f === "directory-readiness.test.mjs") continue; // this file spells the patterns it looks for
+    const src = read(d + "/" + f);
+    assert.equal([...src.matchAll(/process\.env\[|\benv\[/g)].length, 0, `${d}/${f} reads an environment variable by a bracket or computed name`);
+  }
 });
 
