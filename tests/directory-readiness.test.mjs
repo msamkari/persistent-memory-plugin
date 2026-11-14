@@ -58,6 +58,20 @@ test("every shell wrapper only starts its own Node script (no shebang, no other 
   }
 });
 
+test("the shell wrappers keep LF line endings and really start their Node script", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  for (const f of readdirSync(join(root, "scripts", "sh"))) assert.ok(!readFileSync(join(root, "scripts", "sh", f)).includes(13), f + " has a carriage return (bash would fail)");
+  const probe = spawnSync("bash", ["-c", "echo ok"], { encoding: "utf8" });
+  if (probe.status !== 0) return; // no bash here: the byte check above is what can be verified
+  const dir = mkdtempSync(join(tmpdir(), "pms-sh-"));
+  const r = spawnSync("bash", [join(root, "scripts", "sh", "doctor.sh"), dir], { encoding: "utf8" });
+  assert.ok(r.status === 0 || r.status === 1 || r.status === 2, "doctor.sh did not run: " + r.stderr);
+  assert.doesNotMatch(r.stderr, /command not found|No such file|syntax error/i);
+  assert.ok((r.stdout + r.stderr).length > 0, "doctor.sh printed nothing");
+});
+
 test("the approval gate can only deny or ask, never allow", () => {
   const sample = [
     "git commit -m 'x\n\nCo-Authored-By: A <a@b.c>'", "gh pr create --body 'Generated with Claude Code'", "git push --force origin main", "git push -f", "git status", "ls", "rm -rf /", "node -e 1", "",
