@@ -29,7 +29,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { pick } from "./envpick.mjs";
 import { fileURLToPath } from "node:url";
 
 // character classes are built from code points (no escape sequences in the source)
@@ -70,7 +69,7 @@ export function cleanLine(text, { stamp = false, now = new Date() } = {}) {
 }
 
 // ---- the folder this session may write in ----
-export function checkRoot(root, { env = pick(["CLAUDE_PROJECT_DIR"]), cwd = process.cwd() } = {}) {
+export function checkRoot(root, { env = { CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR }, cwd = process.cwd() } = {}) {
   let real;
   try { real = fs.realpathSync.native(path.resolve(root)); } catch { refuse("the project root does not exist"); }
   if (!fs.statSync(real).isDirectory()) refuse("the project root is not a folder");
@@ -201,7 +200,7 @@ function readStdin() {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-export function cli(argv, env = pick(["CLAUDE_PROJECT_DIR"]), cwd = process.cwd()) {
+export function cli(argv, env = { CLAUDE_PROJECT_DIR: process.env.CLAUDE_PROJECT_DIR }, cwd = process.cwd()) {
   const flags = new Set(["--stdin", "--stamp", "--create", "--dry-run"]);
   const vals = new Set(["--root", "--file", "--text"]);
   const o = {};

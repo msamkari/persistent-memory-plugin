@@ -1,7 +1,7 @@
 ---
 name: memory-setup
 description: "Use when the session-start note from persistent-memory says this project has no memory system yet, or when the user asks to set up or scaffold the project's memory and hand-over files in this folder (MDs, Jobs, HANDOVER, state manifest, work log, end-of-work check, archive rule). Triggers - set up memory here, memory setup, prepare this project for new chats, جهّز نظام الذاكرة لهذا المشروع، أنشئ ملفات التسليم. Nothing is written without the user's yes in chat. Not for writing the content of the memory files (use persistent-memory-system)."
-allowed-tools: Read, Glob, Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs), Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs *), Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/onboarding.mjs), Bash(node ${CLAUDE_PLUGIN_ROOT}/scripts/onboarding.mjs *)
+allowed-tools: Read, Glob, Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/sh/setup.sh), Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/sh/setup.sh *), Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/sh/onboarding.sh), Bash(bash ${CLAUDE_PLUGIN_ROOT}/scripts/sh/onboarding.sh *)
 ---
 The plugin is installed once, for the user, and serves every folder. A project only needs a few plain files of its own. This skill offers them, and creates them only after the user agrees. Nothing from the plugin is copied into the project: no scripts, only project files and two small config files.
 
@@ -13,11 +13,11 @@ The plugin is installed once, for the user, and serves every folder. A project o
 
 ## 1. The user says no
 Record it so the offer never comes back for this project, then stop:
-`node ${CLAUDE_PLUGIN_ROOT}/scripts/onboarding.mjs decline --root "<project root>" --data "${CLAUDE_PLUGIN_DATA}"`
+`bash ${CLAUDE_PLUGIN_ROOT}/scripts/sh/onboarding.sh decline --root "<project root>" --data "${CLAUDE_PLUGIN_DATA}"`
 If the user wants no offers in any project: the same command with `off` instead of `decline` (undo: `on`). The answer is stored in the plugin's own data folder, not in the project. If the command reports that the data folder is not known, say nothing more: the note is shown at most twice per project anyway.
 
 ## 2. The user says yes: show the plan first
-`node ${CLAUDE_PLUGIN_ROOT}/scripts/setup.mjs init --root "<project root>"` (add `--lang ar` for Arabic file text, `--show` to print the file bodies). This prints the plan and writes nothing. Show the list to the user and say in one line what each part is for:
+`bash ${CLAUDE_PLUGIN_ROOT}/scripts/sh/setup.sh init --root "<project root>"` (add `--lang ar` for Arabic file text, `--show` to print the file bodies). This prints the plan and writes nothing. Show the list to the user and say in one line what each part is for:
 - `MDs/HANDOVER.md`: one "Start here" block that a new chat reads first (the session hook names its path).
 - `Jobs/series_log.md` and `Jobs/state_manifest.json`: the work log and the current state.
 - `MDs/System_Current_MD/` and `MDs/System_Previous_MDs/`: the memory files and their archive (empty for now).
