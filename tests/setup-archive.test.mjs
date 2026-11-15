@@ -340,7 +340,7 @@ test("archive arguments are strict: missing values, unknown flags, fake dates, r
   const bad = [["copy", "Jobs/log.md", "--root"], ["copy", "Jobs/log.md", "--date"], ["copy", "Jobs/log.md", "--to"], ["copy", "Jobs/log.md", "--to", "--write"],
     ["copy", "Jobs/log.md", "--wirte"], ["copy", "Jobs/log.md", "--date", "2026-13-45"], ["copy", "Jobs/log.md", "--date", "2026-02-30"], ["copy", "Jobs/log.md", "--date", "9999-99-99"],
     ["copy", "Jobs/log.md", "--to", "CON", "--write"], ["copy", "Jobs/log.md", "--to", "Jobs/nul.d", "--write"], ["copy", "Jobs/log.md", "--to", "Jobs/COM1/", "--write"],
-    ["copy", "Jobs/log.md", "--to", "//server/share", "--write"], ["copy", "Jobs/log.md", "--to", "\\server\share", "--write"], ["copy", "Jobs/log.md", "extra"], ["init", "stray"]];
+    ["copy", "Jobs/log.md", "--to", "//server/share", "--write"], ["copy", "Jobs/log.md", "--to", "\\\\server\\share", "--write"], ["copy", "Jobs/log.md", "extra"], ["init", "stray"]];
   for (const a of bad) { const r = archive(p, ...a); assert.equal(r.status, 1, a.join(" ")); assert.match(r.stdout, /^FAIL /, a.join(" ")); }
   assert.ok(!exists(join(p, "Jobs", "_Archive")) && !exists(join(p, "CON")) && !exists(join(p, "server")), "nothing written");
   assert.equal(archive(p, "copy", "Jobs/log.md", "--date", "2028-02-29").status, 0, "a real leap day is fine");
