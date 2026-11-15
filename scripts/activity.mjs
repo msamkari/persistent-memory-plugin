@@ -16,6 +16,9 @@ export function appendActivity(dir, entry) {
 export function tailActivity(dir, n = 20) {
   const f = logFile(dir);
   if (!fs.existsSync(f)) return [];
+  n = Number.isInteger(n) && n > 0 ? n : 20;   // never slice(-negative) or slice(-0): wrong lines, or all of them
+  let st; try { st = fs.statSync(f); } catch { throw new Error("cannot read Activity_Log/activity.jsonl"); }
+  if (!st.isFile()) throw new Error("Activity_Log/activity.jsonl is not a regular file");
   return fs.readFileSync(f, "utf8").split("\n").filter(Boolean).slice(-n);
 }
 
@@ -28,7 +31,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     appendActivity(dir, { source: "manual", action: a, detail: b || "", approval: c || "none stated" });
     console.log("OK appended"); 
   } else if (cmd === "tail") {
-    const lines = tailActivity(dir, Number(a) || 20);
+    if (a !== undefined && !/^[1-9][0-9]{0,8}$/.test(a)) { console.log("FAIL usage: tail [N] (N is a positive whole number)"); process.exit(1); }
+    let lines;
+    try { lines = tailActivity(dir, a === undefined ? 20 : Number(a)); }
+    catch (e) { console.log("FAIL " + (e && e.message ? e.message : "cannot read the activity log")); process.exit(1); }
     console.log(lines.length ? lines.join("\n") : "INFO no activity recorded yet");
   } else { console.log("FAIL usage: add|tail"); process.exit(1); }
 }

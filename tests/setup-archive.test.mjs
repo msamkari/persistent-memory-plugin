@@ -308,3 +308,46 @@ test("a project name with replacement patterns ($&, $`) is written literally", (
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.ok(read(p, "MDs/HANDOVER.md").includes("A$&B$`C"));
 });
+
+// ---------------- 1.8.4: links, strict arguments ----------------
+import { symlinkSync, rmSync, existsSync as exists, readdirSync as ls } from "node:fs";
+function link(target, at) { try { symlinkSync(target, at, "junction"); return true; } catch { return false; } }
+test("archive refuses a source file reached through a junction/symlink folder (nothing written)", (t) => {
+  const p = withStarter(), out = tmp("pms-out-"); put(out, "secret.md", "outside"); put(p, "Jobs/x.md", "x");
+  if (!link(out, join(p, "Jobs", "jn"))) return t.skip("links unavailable");
+  const r = archive(p, "copy", "Jobs/jn/secret.md", "--to", "Jobs/_Archive", "--write");
+  assert.equal(r.status, 1); assert.match(r.stdout, /FAIL .*(symbolic link|junction)/);
+  assert.ok(!exists(join(p, "Jobs", "_Archive")), "nothing created"); assert.deepEqual(ls(out), ["secret.md"]);
+  rmSync(join(p, "Jobs", "jn"), { force: true, recursive: false });
+});
+test("archive refuses a --to folder that is a junction/symlink, and a rule `to` that is one", (t) => {
+  const p = withStarter(), out = tmp("pms-out-"); put(p, "Jobs/log.md", "log");
+  if (!link(out, join(p, "Jobs", "jdest"))) return t.skip("links unavailable");
+  const r = archive(p, "copy", "Jobs/log.md", "--to", "Jobs/jdest", "--write");
+  assert.equal(r.status, 1); assert.match(r.stdout, /FAIL .*(symbolic link|junction)/); assert.deepEqual(ls(out), []);
+  const r2 = archive(p, "copy", "Jobs/log.md", "--to", "Jobs/jdest/sub", "--write"); assert.equal(r2.status, 1); assert.deepEqual(ls(out), []);
+  put(p, "MDs/archive.json", JSON.stringify({ rules: [{ from: "Jobs/", to: "Jobs/jdest/" }] }));
+  const r3 = archive(p, "copy", "Jobs/log.md", "--write"); assert.equal(r3.status, 1); assert.deepEqual(ls(out), []);
+  rmSync(join(p, "Jobs", "jdest"), { force: true, recursive: false });
+});
+test("a normal nested archive path still works after the link checks", () => {
+  const p = withStarter(); put(p, "Jobs/log.md", "log");
+  assert.equal(archive(p, "copy", "Jobs/log.md", "--write").status, 0);
+  assert.ok(exists(join(p, "Jobs", "_Archive")));
+});
+test("archive arguments are strict: missing values, unknown flags, fake dates, reserved or network --to", () => {
+  const p = withStarter(); put(p, "Jobs/log.md", "log");
+  const bad = [["copy", "Jobs/log.md", "--root"], ["copy", "Jobs/log.md", "--date"], ["copy", "Jobs/log.md", "--to"], ["copy", "Jobs/log.md", "--to", "--write"],
+    ["copy", "Jobs/log.md", "--wirte"], ["copy", "Jobs/log.md", "--date", "2026-13-45"], ["copy", "Jobs/log.md", "--date", "2026-02-30"], ["copy", "Jobs/log.md", "--date", "9999-99-99"],
+    ["copy", "Jobs/log.md", "--to", "CON", "--write"], ["copy", "Jobs/log.md", "--to", "Jobs/nul.d", "--write"], ["copy", "Jobs/log.md", "--to", "Jobs/COM1/", "--write"],
+    ["copy", "Jobs/log.md", "--to", "//server/share", "--write"], ["copy", "Jobs/log.md", "--to", "\\server\share", "--write"], ["copy", "Jobs/log.md", "extra"], ["init", "stray"]];
+  for (const a of bad) { const r = archive(p, ...a); assert.equal(r.status, 1, a.join(" ")); assert.match(r.stdout, /^FAIL /, a.join(" ")); }
+  assert.ok(!exists(join(p, "Jobs", "_Archive")) && !exists(join(p, "CON")) && !exists(join(p, "server")), "nothing written");
+  assert.equal(archive(p, "copy", "Jobs/log.md", "--date", "2028-02-29").status, 0, "a real leap day is fine");
+  assert.equal(archive(p, "copy", "Jobs/log.md", "--date", "2026-11-15", "--write").status, 0);
+});
+test("--root without a value never falls back to the working folder", () => {
+  const p = withStarter(); put(p, "Jobs/log.md", "log");
+  const r = node(script("archive.mjs"), ["copy", "Jobs/log.md", "--root", "--write"], { cwd: p });
+  assert.equal(r.status, 1); assert.ok(!exists(join(p, "Jobs", "_Archive")));
+});

@@ -40,3 +40,27 @@ test("active job without BUDGET warns; with BUDGET passes", () => {
   assert.doesNotMatch(run(mk("j\n\nSTATUS:\nIN PROGRESS phase 2\nBUDGET: max 5 USD\n")), /no BUDGET line/);
   assert.doesNotMatch(run(mk("j\n\nSTATUS:\nCOMPLETE\n")), /no BUDGET line/);
 });
+
+// ---- 1.8.4 ----
+test("Arabic-Indic and Persian digits are normalised: ٣ numbering is counted, بند ٩٩ is flagged", () => {
+  const ok = run(mk("2026-10-01 (١) a\n2026-10-02 (٢) b\n2026-10-03 (٣) c\n"));
+  assert.equal(ok.status, 0); assert.match(ok.stdout, /entry numbers unique \(1\.\.3\)/);
+  const gap = run(mk("2026-10-01 (١) a\n2026-10-03 (٣) c\n")); assert.match(gap.stdout, /missing entry numbers: 2/);
+  const bad = run(mk(E(1), "see بند ٩٩")); assert.equal(bad.status, 1); assert.match(bad.stdout, /non-existent entries: 01_s\.md: بند 99/);
+  const fa = run(mk("2026-10-01 (۱) a\n2026-10-02 (۲) b\n")); assert.match(fa.stdout, /unique \(1\.\.2\)/);
+  const faRef = run(mk(E(1), "البند ۷")); assert.match(faRef.stdout, /non-existent/);
+});
+test("a sync-conflict copy of the log is not chosen as the 02_* file", () => {
+  const d = mk(E(1) + E(2));
+  fs.writeFileSync(path.join(d, "MDs", "System_Current_MD", "02_log (conflicted copy).md"), "nothing here\n");
+  const r = run(d); assert.equal(r.status, 0); assert.match(r.stdout, /unique \(1\.\.2\)/);
+});
+test("--apply on a read-only target ends with a clean FAIL and a RESULT line, no stack trace", (t) => {
+  const d = mk(E(1), "x System_Previous_MDs/2026-10/01_s_2026-10-14b.md", { "2026-10/01_s_2026-10-14.md": "old" });
+  const f = path.join(d, "MDs", "System_Current_MD", "01_s.md"); fs.chmodSync(f, 0o444);
+  try { fs.writeFileSync(f, "x System_Previous_MDs/2026-10/01_s_2026-10-14b.md"); fs.chmodSync(f, 0o444); t.skip("this account can write read-only files"); return; } catch { /* expected */ }
+  const r = run(d, "--apply");
+  assert.equal(r.status, 1); assert.match(r.stdout, /FAIL could not fix 01_s\.md \((EPERM|EACCES)\)/); assert.match(r.stdout, /RESULT: FAIL/);
+  assert.doesNotMatch(r.stdout + r.stderr, /\n\s+at /); assert.equal(r.stderr, "");
+  fs.chmodSync(f, 0o666);
+});

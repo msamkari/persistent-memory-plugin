@@ -8,12 +8,13 @@ const dirArg = args.find(a => !a.startsWith("--"));
 const root = dirArg || process.env.CLAUDE_PLUGIN_OPTION_MEMORY_DIR || process.env.PMS_MEMORY_DIR || "";
 const out = []; let fails = 0;
 const say = (lvl, m) => { out.push(`${lvl} ${m}`); if (lvl === "FAIL") fails++; };
-const D = s => s.replace(/[٠-٩]/g, c => String.fromCharCode(c.charCodeAt(0) - 1632));
+// Arabic-Indic digits U+0660-0669 (offset 1584 to ASCII) and Persian digits U+06F0-06F9 (offset 1728) become 0-9.
+const D = s => s.replace(/[٠-٩]/g, c => String.fromCharCode(c.charCodeAt(0) - 1584)).replace(/[۰-۹]/g, c => String.fromCharCode(c.charCodeAt(0) - 1728));
 const cur = path.join(root, "MDs", "System_Current_MD");
 if (!root || !fs.existsSync(cur)) { say("FAIL", "MDs/System_Current_MD not found (give the memory folder as argument)"); finish(); }
 const read = f => D(fs.readFileSync(path.join(cur, f), "utf8"));
 const files = fs.readdirSync(cur).filter(f => f.endsWith(".md")).sort();
-const log = files.find(f => /^02_/.test(f));
+const log = files.find(f => /^02_/.test(f) && !/\(conflicted copy\)/i.test(f)); // a sync-conflict copy must not be mistaken for the log
 let max = 0;
 if (!log) say("WARN", "no 02_* log file; numbering checks skipped");
 else {
@@ -60,16 +61,20 @@ if (fs.existsSync(jobs)) for (const f of fs.readdirSync(jobs).filter(f => f.ends
 }
 if (apply && fixes.length) {
   const ym = new Date().toISOString().slice(0, 7), ds = new Date().toISOString().slice(0, 10);
-  const ad = path.join(prevRoot, ym); fs.mkdirSync(ad, { recursive: true });
-  for (const f of [...new Set(fixes.map(x => x.f))]) {
-    const dst = path.join(ad, f.replace(/\.md$/, `_${ds}_prelint.md`));
-    if (fs.existsSync(dst)) { say("FAIL", `archive target exists, not overwriting: ${dst}`); continue; }
-    fs.copyFileSync(path.join(cur, f), dst);           // archive first
-    let t = fs.readFileSync(path.join(cur, f), "utf8");
-    for (const x of fixes.filter(x => x.f === f)) t = t.split(x.from).join(x.to);
-    fs.writeFileSync(path.join(cur, f), t);
-    say("INFO", `fixed ${f}; old copy: ${dst}`);
-  }
+  try {
+    const ad = path.join(prevRoot, ym); fs.mkdirSync(ad, { recursive: true });
+    for (const f of [...new Set(fixes.map(x => x.f))]) {
+      const dst = path.join(ad, f.replace(/\.md$/, `_${ds}_prelint.md`));
+      if (fs.existsSync(dst)) { say("FAIL", `archive target exists, not overwriting: ${dst}`); continue; }
+      try {
+        fs.copyFileSync(path.join(cur, f), dst);           // archive first
+        let t = fs.readFileSync(path.join(cur, f), "utf8");
+        for (const x of fixes.filter(x => x.f === f)) t = t.split(x.from).join(x.to);
+        fs.writeFileSync(path.join(cur, f), t);
+        say("INFO", `fixed ${f}; old copy: ${dst}`);
+      } catch (e) { say("FAIL", `could not fix ${f} (${e && e.code ? e.code : "error"}); the file was not changed (an archive copy may already exist: ${dst}); remaining fixes skipped`); break; }
+    }
+  } catch (e) { say("FAIL", `could not apply fixes (${e && e.code ? e.code : "error"}); nothing was changed`); }
 } else if (fixes.length) say("INFO", "dry run: re-run with --apply to apply the unique path fixes (archives first)");
 say("INFO", "lint cannot judge factual citations (e.g. wrong page numbers); use the memory-verifier agent for that");
 finish();
