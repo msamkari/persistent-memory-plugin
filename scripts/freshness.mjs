@@ -90,12 +90,30 @@ export function sessionStartMs(transcriptPath) {
   try { return fs.statSync(transcriptPath).birthtimeMs || null; } catch { return null; }
 }
 
-export function isScheduledTask(transcriptPath) {
+// Text of the first user message of a transcript: the first line that is a user turn (type "user", or the
+// queue entry that carries the prompt). Later messages, tool results and pasted text never count.
+function firstUserText(transcriptPath) {
+  const fd = fs.openSync(transcriptPath, "r");
+  let text = "";
   try {
-    const fd = fs.openSync(transcriptPath, "r");
-    const buf = Buffer.alloc(8000); const n = fs.readSync(fd, buf, 0, buf.length, 0); fs.closeSync(fd);
-    return buf.subarray(0, n).toString("utf8").includes("<scheduled-task");
-  } catch { return false; }
+    const buf = Buffer.alloc(262144); const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    const lines = buf.subarray(0, n).toString("utf8").split("\n");
+    if (n === buf.length) lines.pop();                 // the last line may be cut off
+    for (const line of lines) {
+      let o; try { o = JSON.parse(line); } catch { continue; }
+      if (!o || typeof o !== "object") continue;
+      let c;
+      if (o.type === "queue-operation" && typeof o.content === "string") c = o.content;
+      else if (o.type === "user" && o.message) c = o.message.content;
+      else continue;
+      if (Array.isArray(c)) c = c.map((b) => (b && typeof b.text === "string" ? b.text : "")).join("\n");
+      if (typeof c === "string" && c.trim()) { text = c; break; }
+    }
+  } finally { fs.closeSync(fd); }
+  return text;
+}
+export function isScheduledTask(transcriptPath) {
+  try { return firstUserText(transcriptPath).includes("<scheduled-task"); } catch { return false; }
 }
 
 // Subagents spawned by this session keep their own transcripts next to the main one:
@@ -114,9 +132,14 @@ const fold = (s) => slash(s).normalize("NFC").toLowerCase();
 // (and of this session's subagent transcripts): file tools by their file_path, shell tools by a write-looking
 // command that names the path. A mere read or a mention in text does not count.
 // Bounded by bytes and time over all files together; on a bound it returns what it found.
-export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000, maxBytes = 400 * 1024 * 1024 } = {}) {
+export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000, maxBytes = 400 * 1024 * 1024, root = "" } = {}) {
   const found = new Set();
+  // With a project root, a file tool's path is resolved against it (relative paths too) and must be exactly the
+  // project file: a same-named file in another folder is not this project's.
+  let roots = [];
+  if (root) { roots = [path.resolve(root)]; try { const r = fs.realpathSync.native(roots[0]); if (r !== roots[0]) roots.push(r); } catch { /* keep the given root */ } }
   const lower = rels.map((r) => [r, fold(r)]);
+  const full = roots.length ? rels.map((r) => [r, roots.map((x) => fold(path.resolve(x, r)))]) : [];
   const tails = lower.map(([r, l]) => [r, l, l.split("/").slice(-2).join("/")]);
   const t0 = Date.now(); let bytes = 0;
   for (const file of [transcriptPath, ...subagentTranscripts(transcriptPath)]) {
@@ -136,8 +159,9 @@ export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000,
         for (const b of content) {
           if (b?.type !== "tool_use" || !b.input) continue;
           if (FILE_TOOLS.has(b.name)) {
-            const fp = fold(b.input.file_path || b.input.notebook_path || "");
-            for (const [r, l] of lower) if (fp === l || fp.endsWith("/" + l)) found.add(r);
+            const raw = b.input.file_path || b.input.notebook_path || "";
+            if (roots.length) { const fp = fold(path.resolve(roots[0], String(raw))); for (const [r, ls] of full) if (ls.includes(fp)) found.add(r); }
+            else { const fp = fold(raw); for (const [r, l] of lower) if (fp === l) found.add(r); }
           } else if (SHELL_TOOLS.has(b.name)) {
             const cmd = fold(b.input.command || "").replace(/\/\/+/g, "/");
             if (WRITEISH.test(cmd)) for (const [r, l] of lower) if (cmd.includes(l)) found.add(r);

@@ -53,6 +53,40 @@ export function loadArchiveConfig(root) {
 
 const fold = (s) => (process.platform === "win32" || process.platform === "darwin" ? s.toLowerCase() : s).normalize("NFC");
 const inside = (root, p) => { const rel = path.relative(root, p); return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel); };
+const RESERVED = /^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³]|conin\$|conout\$)$/i;
+// Refuses a folder name that is a Windows device name (CON, NUL, COM1 ...), also with an extension or trailing dots/spaces.
+const checkReserved = (rel) => {
+  for (const seg of slash(rel).split("/")) {
+    const base = seg.replace(/[. ]+$/, "").split(".")[0].replace(/ +$/, "");
+    if (RESERVED.test(base)) throw new Error(`the folder name "${seg}" is a reserved device name`);
+  }
+};
+// True only for a real calendar date written YYYY-MM-DD (not 2026-13-45, not 2026-02-30).
+export const isRealDate = (s) => {
+  const m = String(s).match(/^(\d{4})-(\d\d)-(\d\d)$/);
+  if (!m) return false;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (y < 1000) return false;
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+};
+// Walks the path folder by folder from the project root (the way joblog.mjs does): no component that exists
+// may be a symbolic link / junction, and each must resolve to its own place inside the root. Missing tail
+// components are fine (they will be created inside a verified parent).
+function assertNoLinks(root, target, what) {
+  let realRoot;
+  try { realRoot = fs.realpathSync.native(root); } catch { throw new Error("the project root does not exist"); }
+  const rel = path.relative(root, target);
+  let cur = realRoot;
+  for (const seg of rel.split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, seg);
+    let st;
+    try { st = fs.lstatSync(cur); } catch (e) { if (e && e.code === "ENOENT") return; throw new Error(`cannot check ${what}: ${seg}`); }
+    if (st.isSymbolicLink()) throw new Error(`${what}: "${seg}" is a symbolic link or junction; refusing to follow it`);
+    const real = fs.realpathSync.native(cur);
+    if (real !== cur && real.toLowerCase() !== cur.toLowerCase()) throw new Error(`${what}: "${seg}" resolves outside its place (junction or link); refusing`);
+  }
+}
 const sha = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 
@@ -79,12 +113,14 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
   root = path.resolve(root);
   const src = path.resolve(root, file);
   if (!inside(root, src)) throw new Error("the file is outside the project folder");
+  assertNoLinks(root, src, "the source file path");
   let st; try { st = fs.lstatSync(src); } catch { throw new Error("file not found: " + slash(path.relative(root, src))); }
   if (!st.isFile()) throw new Error("not a regular file: " + slash(path.relative(root, src)));
-  if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new Error("date must be YYYY-MM-DD");
+  if (!isRealDate(date)) throw new Error("date must be a real calendar date, YYYY-MM-DD");
   const rel = slash(path.relative(root, src));
   const cfg = loadArchiveConfig(root);
   let destRel, byMonth = false;
+  if (to && /^[\\/]{2}/.test(String(to))) throw new Error("--to must not start with // or two backslashes (network paths are not allowed)");
   if (to) destRel = dirForm(path.isAbsolute(to) ? path.relative(root, to) : to);
   else {
     if (cfg.rules.some((r) => fold(rel).startsWith(fold(r.to)))) throw new Error("this file is already an archive copy: " + rel);
@@ -94,6 +130,8 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
   }
   const destDir = path.join(root, ...destRel.split("/").filter(Boolean), ...(byMonth ? [date.slice(0, 7)] : []));
   if (!inside(root, destDir)) throw new Error("the archive folder is outside the project folder");
+  checkReserved(slash(path.relative(root, destDir)));
+  assertNoLinks(root, destDir, "the archive folder path");
   const ext = path.extname(src), stem = path.basename(src, ext);
   for (let attempt = 0; attempt < 27; attempt++) {
     const dest = path.join(destDir, nextName(destDir, stem, ext, date, cfg.first));
@@ -109,12 +147,32 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
   throw new Error("could not find a free archive name");
 }
 
+const USAGE = "usage: node scripts/archive.mjs copy <file> [--root DIR] [--to DIR] [--date YYYY-MM-DD] [--write] | init [--root DIR] [--write]";
+// Strict parsing: a flag that needs a value without one, or an unknown flag (a typo like --wirte), is a usage error.
+function parseArgs(args) {
+  const VALUE = new Set(["--root", "--date", "--to"]), BOOL = new Set(["--write"]);
+  const o = { pos: [], write: false, root: "", date: "", to: "" };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (VALUE.has(a)) {
+      const v = args[i + 1];
+      if (v === undefined || v === "" || v.startsWith("--")) throw Object.assign(new Error(`${a} needs a value. ${USAGE}`), { usage: true });
+      o[a.slice(2)] = v; i++;
+    } else if (BOOL.has(a)) o.write = true;
+    else if (a.startsWith("--")) throw Object.assign(new Error(`unknown option ${a}. ${USAGE}`), { usage: true });
+    else o.pos.push(a);
+  }
+  return o;
+}
 function cli() {
   const args = process.argv.slice(2);
   const cmd = args[0];
-  const opt = (name) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : ""; };
-  const root = path.resolve(opt("--root") || process.env.CLAUDE_PROJECT_DIR || process.cwd());
-  const write = args.includes("--write");
+  if (cmd !== "init" && cmd !== "copy") { console.log(USAGE); return 2; }
+  const o = parseArgs(args.slice(1));
+  if (cmd === "init" ? o.pos.length !== 0 : o.pos.length !== 1) throw Object.assign(new Error(USAGE), { usage: true });
+  if (o.date && !isRealDate(o.date)) throw Object.assign(new Error("--date must be a real calendar date, YYYY-MM-DD"), { usage: true });
+  const root = path.resolve(o.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const write = o.write;
   if (cmd === "init") {
     const cfgPath = path.join(root, ...CONFIG_REL);
     if (fs.existsSync(cfgPath)) { console.log("OK MDs/archive.json already exists; nothing to do (init never overwrites)."); return 0; }
@@ -125,14 +183,12 @@ function cli() {
     console.log("OK wrote MDs/archive.json");
     return 0;
   }
-  if (cmd === "copy" && args[1] && !args[1].startsWith("--")) {
-    const r = archiveCopy(root, args[1], { write, to: opt("--to"), date: opt("--date") || undefined });
+  {
+    const r = archiveCopy(root, o.pos[0], { write, to: o.to, date: o.date || undefined });
     console.log(r.written ? `OK archived to ${r.rel} (verified). The original was not changed.`
       : `Would archive to ${r.rel} (nothing copied; add --write).`);
     return 0;
   }
-  console.log("usage: node scripts/archive.mjs copy <file> [--root DIR] [--to DIR] [--write] | init [--root DIR] [--write]");
-  return 2;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { process.exit(cli()); } catch (e) { console.log("FAIL " + (e && e.message ? e.message : "archive failed")); process.exit(1); }

@@ -192,3 +192,31 @@ test("Arabic folder and file names with spaces are matched (backslash and forwar
     assert.equal(JSON.parse(run(p, { transcript_path: transcript(p, [{ name: "Edit", input: { file_path: fp } }]) }).stdout).decision, "block");
   }
 });
+
+// ---- 1.8.4 ----
+test("a same-named file in ANOTHER folder does not count as this project's work", () => {
+  const p = project(); const other = tmp("pms-other-");
+  const r = run(p, { transcript_path: transcript(p, [{ name: "Write", input: { file_path: join(other, "Jobs", "log.md") } }]) });
+  assert.equal(r.stdout, "");
+  const r2 = run(p, { transcript_path: transcript(p, [{ name: "Write", input: { file_path: join(p, "sub", "Jobs", "log.md") } }]) });
+  assert.equal(r2.stdout, "", "a nested folder with the same tail is not the project file either");
+});
+test("a relative file path in the transcript is resolved against the project root", () => {
+  const p = project(); const r = run(p, { transcript_path: transcript(p, [{ name: "Edit", input: { file_path: "Jobs/log.md" } }]) });
+  assert.equal(JSON.parse(r.stdout).decision, "block");
+});
+test("<scheduled-task counts only in the FIRST user message, not in a later message or tool text", () => {
+  const p = project();
+  const f = join(p, "session.jsonl"), at = iso(T0 - 1000);
+  const lines = [JSON.stringify({ type: "queue-operation", timestamp: at, content: "hello" }),
+    JSON.stringify({ type: "user", message: { role: "user", content: "please explain the <scheduled-task tag" } }),
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t", name: "Edit", input: { file_path: join(p, "Jobs", "log.md") } }] } })];
+  writeFileSync(f, lines.join("\n") + "\n");
+  assert.equal(JSON.parse(run(p, { transcript_path: f }).stdout).decision, "block", "a later mention does not switch the hook off");
+  // the real thing: first user message in either shape
+  const first = [JSON.stringify({ type: "user", timestamp: at, message: { role: "user", content: [{ type: "text", text: '<scheduled-task name="x">' }] } }), lines[2]];
+  writeFileSync(f, first.join("\n") + "\n");
+  assert.equal(run(p, { transcript_path: f }).stdout, "", "scheduled run (blocks of text) is skipped");
+  writeFileSync(f, [JSON.stringify({ type: "user", timestamp: at, message: { role: "user", content: '<scheduled-task name="x">' } }), lines[2]].join("\n") + "\n");
+  assert.equal(run(p, { transcript_path: f }).stdout, "", "scheduled run (string content) is skipped");
+});

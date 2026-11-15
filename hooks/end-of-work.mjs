@@ -19,7 +19,7 @@ try {
   if (!tp || isScheduledTask(tp)) allow();                   // scheduled runs are never stopped
   const rep = staleReport(root, cfg, sessionStartMs(tp));
   if (!rep || rep.newer.length === 0) allow();
-  const mine = await writtenByThisSession(tp, rep.newer.map((n) => n.rel));
+  const mine = await writtenByThisSession(tp, rep.newer.map((n) => n.rel), { root });
   const list = rep.newer.filter((n) => mine.has(n.rel));
   if (list.length === 0) allow();                            // changed by another session, agent or sync: not this one
   const names = list.slice(0, 6).map((n) => n.rel).join(", ");

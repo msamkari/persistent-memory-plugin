@@ -5,6 +5,7 @@
 import { readdirSync, statSync, existsSync, openSync, readSync, closeSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { safeName } from "./safe-name.mjs";
 
 // Calibrated 2026-10-23 against measured Claude input tokens: ASCII text (mostly English) and
 // non-ASCII text (mostly Arabic, 2 bytes per character). Large samples were within ~1%; small ones within ~20%.
@@ -75,7 +76,7 @@ export function warnings(m, t = thresholds()) {
 
 export function summaryLines(m, t = thresholds()) {
   const lines = [`Start-of-session read cost: ${kb(m.bytes)} KB, about ${m.tokens} tokens (${ESTIMATE_NOTE}).`];
-  lines.push("Largest: " + m.files.slice(0, 3).map((f) => `${f.name} ${kb(f.bytes)} KB`).join(", "));
+  lines.push("Largest: " + m.files.slice(0, 3).map((f) => `${safeName(f.name)} ${kb(f.bytes)} KB`).join(", "));
   if (m.skipped) lines.push(`${m.skipped} file(s) could not be read and are not counted.`);
   const w = warnings(m, t);
   if (w.length) {

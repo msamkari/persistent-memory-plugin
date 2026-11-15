@@ -1,0 +1,21 @@
+# local evaluation output: contains absolute local paths, never commit it
+evals/results/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# editors and tools
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.claude/settings.local.json
+
+# dependencies, logs, temp files
+node_modules/
+*.log
+*.tmp

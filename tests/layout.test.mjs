@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,4 +25,9 @@ test("tracked files stay inside the known top-level layout", { skip: !inRepo && 
 test("no tracked path is absurdly long", { skip: !inRepo && "not a git checkout" }, () => {
   const long = r.stdout.split("\n").filter((f) => f.length > MAX_PATH);
   assert.deepEqual(long, [], `paths over ${MAX_PATH} characters: ${long.map((f) => f.slice(0, 60) + "...").join(", ")}`);
+});
+
+test(".gitignore keeps eval output (local paths) and OS/editor junk out of git", () => {
+  const g = readFileSync(join(root, ".gitignore"), "utf8").split(/\r?\n/);
+  for (const need of ["evals/results/", ".DS_Store", "Thumbs.db", "node_modules/"]) assert.ok(g.includes(need), `.gitignore lacks ${need}`);
 });
