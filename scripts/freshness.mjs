@@ -136,10 +136,12 @@ export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000,
   const found = new Set();
   // With a project root, a file tool's path is resolved against it (relative paths too) and must be exactly the
   // project file: a same-named file in another folder is not this project's.
+  // Plain string folding, not path.resolve: a transcript written on Windows (C:\...) must still match when this runs elsewhere.
   let roots = [];
-  if (root) { roots = [path.resolve(root)]; try { const r = fs.realpathSync.native(roots[0]); if (r !== roots[0]) roots.push(r); } catch { /* keep the given root */ } }
+  if (root) { roots = [fold(root).replace(/\/+$/, "")]; try { const r = fold(fs.realpathSync.native(root)).replace(/\/+$/, ""); if (!roots.includes(r)) roots.push(r); } catch { /* keep the given root */ } }
   const lower = rels.map((r) => [r, fold(r)]);
-  const full = roots.length ? rels.map((r) => [r, roots.map((x) => fold(path.resolve(x, r)))]) : [];
+  const full = roots.length ? lower.map(([r, l]) => [r, roots.map((x) => x + "/" + l)]) : [];
+  const isAbs = (p) => /^([a-z]:)?\//.test(p);
   const tails = lower.map(([r, l]) => [r, l, l.split("/").slice(-2).join("/")]);
   const t0 = Date.now(); let bytes = 0;
   for (const file of [transcriptPath, ...subagentTranscripts(transcriptPath)]) {
@@ -160,7 +162,7 @@ export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000,
           if (b?.type !== "tool_use" || !b.input) continue;
           if (FILE_TOOLS.has(b.name)) {
             const raw = b.input.file_path || b.input.notebook_path || "";
-            if (roots.length) { const fp = fold(path.resolve(roots[0], String(raw))); for (const [r, ls] of full) if (ls.includes(fp)) found.add(r); }
+            if (roots.length) { let fp = fold(String(raw)); if (!isAbs(fp)) fp = roots[0] + "/" + fp.replace(/^\.\//, ""); for (const [r, ls] of full) if (ls.includes(fp)) found.add(r); }
             else { const fp = fold(raw); for (const [r, l] of lower) if (fp === l) found.add(r); }
           } else if (SHELL_TOOLS.has(b.name)) {
             const cmd = fold(b.input.command || "").replace(/\/\/+/g, "/");
