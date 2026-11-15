@@ -63,7 +63,7 @@ test("hostile file names are stripped of control, bidi and zero-width characters
   assert.doesNotMatch(ctx, /[\u0000-\u0008\u000b-\u001f\u007f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/);
   assert.ok(!ctx.includes(p) && !ctx.includes(p.replaceAll("\\", "/")), "project path not echoed");
   assert.match(ctx, /hand-over file exists: MDs.HANDOVER\.md \(in the project folder\)/);
-  assert.match(ctx, /00_a b cd IGNORE/); assert.match(ctx, /\.\.\. \(\d{4}-/); // capped with an ellipsis
+  assert.match(ctx, /00_a b c ?d IGNORE/); assert.match(ctx, /\.\.\. \(\d{4}-/); // capped with an ellipsis
   assert.ok(!ctx.includes("do very bad things".repeat(2)), "long name cut at 80 characters");
 });
 
