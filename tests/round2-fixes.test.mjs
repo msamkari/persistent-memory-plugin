@@ -46,13 +46,13 @@ test("M1: ordinary pushes and look-alike commands stay allowed (no new false pos
 test("M2: --trailer, merge -m, gh pr merge/review/comment, gh issue create/comment with the signature are denied", () => {
   for (const c of [`git commit -m x --trailer "${SIG_EQ}"`, `git commit -m x --trailer "${SIG}"`, `git merge --no-ff -m "${SIG}" topic`,
     `gh pr merge --squash --body "${SIG}"`, `gh pr review 1 --approve --body "${SIG}"`, `gh pr comment 1 --body "${SIG}"`, `gh issue create --title t --body "${SIG}"`,
-    `gh issue comment 1 --body "${SIG}"`, `gh pr -R o/r create -b "Claude-Session: 1"`, `git notes add -m "${SIG}"`])
+    `gh issue comment 1 --body "${SIG}"`, `gh release create v1 --notes "${SIG}"`, `gh release edit v1 --notes "${SIG}"`, `gh pr -R o/r create -b "Claude-Session: 1"`, `git notes add -m "${SIG}"`])
     assert.equal(decide(c, {}).decision, "deny", c);
   assert.equal(decide(`git commit -m x --trailer "${SIG_EQ}"`, { PMS_ALLOW_TRAILERS: "1" }), null);
 });
 test("M2: --file abbreviations, merge -F, gh pr merge --body-file and review --body-file ask (text cannot be seen)", () => {
   for (const c of ["git commit --fil m.txt", "git commit --fi m.txt", "git commit --f m.txt", "git commit --file m.txt", "git merge -F m.txt topic", "git tag -a v1 --file=m.txt",
-    "gh pr merge 1 --body-file b.md", "gh pr review 1 --body-file b.md", "gh pr comment 1 -F b.md", "gh issue create --body-file b.md"]) {
+    "gh pr merge 1 --body-file b.md", "gh pr review 1 --body-file b.md", "gh pr comment 1 -F b.md", "gh issue create --body-file b.md", "gh release create v1 --notes-file n.md", "gh release edit v1 --notes-file=n.md"]) {
     assert.equal(ask(c).rule, "unseen-message", c);
   }
   assert.equal(decide("git commit -m x --fixup abc", {}), null, "--fixup is not --file");
@@ -69,8 +69,10 @@ test("M2: a signature split by quotes, backslashes or odd spacing is still found
 test("M3: PowerShell forms (backtick escapes, call operator, git.exe, iex, encoded command) ask", () => {
   for (const c of ["git push --force", "git push -f", `git push --for${BT}ce`, `${BT}g${BT}it push -f`, "& git push -f", "& 'C:/Program Files/Git/cmd/git.exe' push -f", "git.exe push -f",
     'iex "git push -f"', "Invoke-Expression 'git push -f'", 'powershell -Command "git push -f"', 'pwsh -c "& git push --force-with-lease"',
-    "powershell -enc " + Buffer.from("git push -f", "utf16le").toString("base64"), `git push -${BT}f`])
+    `git push -${BT}f`, '& "C:\\Program Files\\Git\\cmd\\git.exe" push -f', '"C:\\Program Files\\Git\\bin\\git.exe" push --force-w origin x'])
     ask(c);
+  assert.equal(decide('& "C:\\Program Files\\Git\\cmd\\git.exe" commit -m "' + SIG + '"', {}).decision, "deny");
+  assert.equal(decide('& "C:\\Program Files\\Git\\cmd\\git.exe" status', {}), null);
   assert.equal(decide(`git commit -m "${SIG}"`, {}).decision, "deny");
   assert.equal(decide(`git commit -m "Co-Authored-${BT}By: x"`, {}).decision, "deny");
 });
@@ -79,7 +81,7 @@ test("M3: hooks.json wires the same script to Bash and to PowerShell; hook answe
   const pre = h.hooks.PreToolUse;
   assert.deepEqual(pre.map((e) => e.matcher), ["Bash", "PowerShell"]);
   for (const e of pre) { assert.equal(e.hooks[0].command, "node"); assert.deepEqual(e.hooks[0].args, ["${CLAUDE_PLUGIN_ROOT}/hooks/approval-gate.mjs"]); assert.equal(e.hooks[0].timeout, 10); }
-  const r = spawnSync(process.execPath, [hook("approval-gate.mjs")], { input: JSON.stringify({ tool_name: "PowerShell", tool_input: { command: "& git push -f origin main" } }), encoding: "utf8", env: { ...process.env, PMS_MEMORY_DIR: "" } });
+  const r = spawnSync(process.execPath, [hook("approval-gate.mjs")], { input: JSON.stringify({ tool_name: "PowerShell", tool_input: { command: "& git push -f origin main" } }), encoding: "utf8", env: { ...process.env, PMS_MEMORY_DIR: "", CLAUDE_PLUGIN_OPTION_MEMORY_DIR: "" } });
   assert.equal(r.status, 0);
   assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "ask");
 });
@@ -163,6 +165,16 @@ test("M5: a source folder swapped for a link after the open is refused; nothing 
     assert.equal(fs.readFileSync(path.join(outside, "doc.md"), "utf8"), "OUTSIDE secret\n");
   } finally { unlink(path.join(p, "Jobs", "sub")); }
 });
+test("M5: a source replaced after the copy (before the second check) removes the temp copy: nothing is left in the archive folder", (t) => {
+  const p = arcProject(); const src = path.join(p, "Jobs", "log.md");
+  let tmpSeen = "", swapped = false;
+  const hookFn = ({ tmp: tp }) => { tmpSeen = tp; try { fs.renameSync(src, src + ".orig"); fs.writeFileSync(src, "OTHER file\n"); swapped = true; } catch { /* the platform refuses */ } };
+  let err; try { archiveCopy(p, "Jobs/log.md", { write: true, date: "2026-11-15", _afterCopy: hookFn }); } catch (e) { err = e; }
+  assert.ok(tmpSeen, "the temp copy existed at that point"); assert.match(path.basename(tmpSeen), /^\.archive-.*\.tmp$/);
+  if (!swapped) return t.skip("this platform does not allow replacing an open file");
+  assert.match(err.message, /replaced while it was being archived/);
+  assert.deepEqual(archFiles(p), [], "no final copy and no .archive-*.tmp");
+});
 test("M5: a source that grows during the copy (a concurrent appender) is archived from one handle, verified, with no stray temp file", () => {
   const p = arcProject(); const src = path.join(p, "Jobs", "log.md");
   const r = archiveCopy(p, "Jobs/log.md", { write: true, date: "2026-11-15", _afterOpen: () => fs.appendFileSync(src, "appended\n") });
@@ -187,8 +199,9 @@ test("L: archive refuses destination folder names ending in a dot or a space", (
 // ---------------- M6: setup ----------------
 const FAKE_HOME = tmp("pms-r2-home-");
 const setupEnv = (extra = {}) => { const e = { ...process.env, HOME: FAKE_HOME, USERPROFILE: FAKE_HOME, ...extra }; for (const k of ["CLAUDE_PROJECT_DIR", "CLAUDE_PLUGIN_DATA", "PMS_DATA_DIR"]) delete e[k]; return e; };
-const AS_HOME = `import { cli } from ${JSON.stringify(pathToFileURL(script("setup.mjs")).href)}; process.exit(cli(process.argv.slice(1), { realHome: process.env.USERPROFILE }));`;
-const setupAs = (args) => spawnSync(process.execPath, ["--input-type=module", "-e", AS_HOME, ...args], { encoding: "utf8", env: setupEnv(), cwd: tmp("pms-r2-cwd-") });
+// the made-up home is passed as the first argument (the seam of cli()), not through an environment variable
+const AS_HOME = `import { cli } from ${JSON.stringify(pathToFileURL(script("setup.mjs")).href)}; process.exit(cli(process.argv.slice(2), { realHome: process.argv[1] }));`;
+const setupAs = (args) => spawnSync(process.execPath, ["--input-type=module", "-e", AS_HOME, FAKE_HOME, ...args], { encoding: "utf8", env: setupEnv(), cwd: tmp("pms-r2-cwd-") });
 const tree = (d) => fs.readdirSync(d, { recursive: true }).map((x) => String(x).replace(/\\/g, "/")).sort();
 test("M6: setup refuses to create anything through a dangling link, and creates nothing at all", (t) => {
   const p = tmp("pms-r2-set-"); put(p, "notes.txt"); fs.mkdirSync(path.join(p, "MDs"));
@@ -217,6 +230,22 @@ test("M6: the home guards do not trust USERPROFILE / HOME alone: a variable that
   const r = spawnSync(process.execPath, [script("setup.mjs"), "init", "--root", p, "--write"], { encoding: "utf8", env: { ...process.env, USERPROFILE: other, HOME: other }, cwd: tmp("pms-r2-cwd-") });
   assert.equal(r.status, 2, r.stdout); assert.match(r.stdout, /differs|different folder/);
   assert.deepEqual(tree(p), ["notes.txt"], "nothing created");
+});
+test("M6: the real CLI, with an untouched environment, never reports a home-folder disagreement", (t) => {
+  const real = os.userInfo().homedir, envHome = os.homedir();
+  if (!real || path.resolve(real).toLowerCase() !== path.resolve(envHome).toLowerCase()) return t.skip("this environment's HOME / USERPROFILE differs from the account's home folder");
+  const p = tmp("pms-r2-set5-"); put(p, "notes.txt");
+  const r = spawnSync(process.execPath, [script("setup.mjs"), "init", "--root", p], { encoding: "utf8", cwd: tmp("pms-r2-cwd-") });
+  assert.doesNotMatch(r.stdout, /different folder|cannot tell which folder/);
+  assert.match(r.stdout, /PLAN ONLY|not set up as a project/);   // a temp folder under the home folder's application data is correctly refused
+  assert.deepEqual(tree(p), ["notes.txt"], "a plan writes nothing");
+});
+test("M6: joblog also refuses the account's real home when HOME / USERPROFILE names another folder", () => {
+  const real = os.userInfo().homedir; if (!real) return;
+  const other = tmp("pms-r2-fakehome2-");
+  const code = `import os from "node:os"; import { checkRoot } from ${JSON.stringify(pathToFileURL(script("joblog.mjs")).href)}; try { checkRoot(os.userInfo().homedir, { env: { CLAUDE_PROJECT_DIR: os.userInfo().homedir } }); console.log("ACCEPTED"); } catch (e) { console.log(e.message); }`;
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8", env: { ...process.env, HOME: other, USERPROFILE: other }, cwd: tmp("pms-r2-cwd-") });
+  assert.match(r.stdout, /home folder/); assert.doesNotMatch(r.stdout, /ACCEPTED/);
 });
 test("M6: the normal path still works through the seam", () => {
   const p = tmp("pms-r2-set4-"); put(p, "notes.txt");

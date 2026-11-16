@@ -26,8 +26,8 @@ function env(extra = {}) {
 const node = (file, args, opts = {}) => spawnSync(process.execPath, [file, ...args], { encoding: "utf8", env: env(opts.env), input: opts.input, cwd: opts.cwd || tmp("pms-cwd-") });
 // The made-up HOME stands in for the account's real home folder through setup.mjs's cli(realHome) seam (the real CLI
 // refuses to run when USERPROFILE / HOME disagrees with the operating system's idea of the home folder).
-const SETUP_AS_HOME = `import { cli } from ${JSON.stringify(pathToFileURL(script("setup.mjs")).href)}; process.exit(cli(process.argv.slice(1), { realHome: process.env.USERPROFILE }));`;
-const setupRun = (args, opts = {}) => spawnSync(process.execPath, ["--input-type=module", "-e", SETUP_AS_HOME, ...args], { encoding: "utf8", env: env(opts.env), cwd: opts.cwd || tmp("pms-cwd-") });
+const SETUP_AS_HOME = `import { cli } from ${JSON.stringify(pathToFileURL(script("setup.mjs")).href)}; process.exit(cli(process.argv.slice(2), { realHome: process.argv[1] }));`;
+const setupRun = (args, opts = {}) => spawnSync(process.execPath, ["--input-type=module", "-e", SETUP_AS_HOME, HOME, ...args], { encoding: "utf8", env: env(opts.env), cwd: opts.cwd || tmp("pms-cwd-") });
 const setup = (p, ...a) => setupRun(["init", "--root", p, ...a]);
 const archive = (p, ...a) => node(script("archive.mjs"), [...a, "--root", p]);
 const tree = (d) => readdirSync(d, { recursive: true }).map((x) => String(x).replace(/\\/g, "/")).sort();

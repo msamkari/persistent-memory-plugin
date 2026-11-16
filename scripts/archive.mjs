@@ -128,8 +128,9 @@ export function nextName(destDir, stem, ext, date, first) {
 }
 
 // Plans (write=false) or makes (write=true) the archive copy. Returns { src, dest, rel, written }.
-// _afterOpen is a test seam: called once, right after the source is opened, before it is verified.
-export function archiveCopy(root, file, { write = false, to = "", date = today(), _afterOpen = null } = {}) {
+// _afterOpen / _afterCopy are test seams: called once right after the source is opened (before it is verified) and once
+// after the bytes are copied to the temp file (before the second verification).
+export function archiveCopy(root, file, { write = false, to = "", date = today(), _afterOpen = null, _afterCopy = null } = {}) {
   root = path.resolve(root);
   const src = path.resolve(root, file);
   if (!inside(root, src)) throw new Error("the file is outside the project folder");
@@ -174,6 +175,7 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
         for (let o = 0; o < n;) o += fs.writeSync(out, buf, o, n - o);
       }
     } finally { fs.closeSync(out); }
+    if (_afterCopy) _afterCopy({ src, destDir, tmp });
     verifyHandle(root, src, fd);                                         // still the same inside file after the copy
     assertNoLinks(root, destDir, "the archive folder path");
     const digest = h.digest("hex");

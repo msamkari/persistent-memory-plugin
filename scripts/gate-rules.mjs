@@ -34,7 +34,9 @@ export function tokenize(cmd, ps = false) {
     const c = cmd[i];
     if (q === "'") { if (c === "'") q = ""; else { cur += c; } continue; }
     if (q === '"') {
-      if ((c === "\\" || (ps && c === "`")) && i + 1 < cmd.length) { cur += cmd[++i]; continue; }
+      // inside double quotes a backslash escapes only " \ $ ` and a newline (bash); otherwise it is literal, so "C:\Program Files\Git\git.exe" stays a path.
+      // PowerShell: only the backtick escapes.
+      if (i + 1 < cmd.length && (ps ? c === "`" : (c === "\\" && '"\\$`\n'.includes(cmd[i + 1])))) { cur += cmd[++i]; continue; }
       if (c === '"') q = ""; else cur += c;
       continue;
     }
@@ -65,7 +67,6 @@ const isShellC = (b, x) => {
   if (b === "powershell" || b === "pwsh") return /^-c(?:o(?:m(?:m(?:a(?:n(?:d)?)?)?)?)?)?:?$/.test(l);
   return /^-[a-z]+c$/.test(l); // bash -ec, sh -euc, bash -xc
 };
-const isEncoded = (x) => { const l = x.toLowerCase(); return l.length >= 2 && l[0] === "-" && "-encodedcommand".startsWith(l); };
 
 function analyzeSegment(t, f, depth, ps) {
   const d = t.map((x) => (x.includes("\\") ? x.replace(/\\/g, "") : x)); // a backslash inside a word (g\it, -\f) is dropped by the shell
@@ -123,11 +124,8 @@ function analyzeSegment(t, f, depth, ps) {
         if (EVALS.has(b)) analyze(d.slice(i + 1).join(" "), f, depth + 1, ps);
         else {
           const k = d.findIndex((x, n) => n > i && isShellC(b, x));
-          const e = (b === "powershell" || b === "pwsh") ? d.findIndex((x, n) => n > i && isEncoded(x)) : -1;
           if (k >= 0) analyze(d.slice(k + 1).join(" "), f, depth + 1, ps);
-          else if (e >= 0 && d[e + 1] && d[e + 1].length <= 200_000) {
-            try { analyze(Buffer.from(d[e + 1], "base64").toString("utf16le"), f, depth + 1, ps); } catch { /* not base64 */ }
-          } else for (let n = i + 1; n < t.length; n++) if (/\s/.test(t[n])) analyze(t[n], f, depth + 1, ps); // bash <<< "git push -f"
+          else for (let n = i + 1; n < t.length; n++) if (/\s/.test(t[n])) analyze(t[n], f, depth + 1, ps); // bash <<< "git push -f"
         }
       }
     }
