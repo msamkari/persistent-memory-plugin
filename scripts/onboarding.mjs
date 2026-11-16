@@ -53,6 +53,9 @@ export function projectState(data, root) {
 export function setProjectState(data, root, state, { exclusive = false } = {}) {
   fs.mkdirSync(stateDir(data), { recursive: true });
   const body = JSON.stringify({ v: 1, state, at: new Date().toISOString().slice(0, 10) }) + "\n";
+  // Never write through a link: a marker that is a symbolic link (or junction) is refused, its target is not truncated.
+  try { if (fs.lstatSync(markerPath(data, root)).isSymbolicLink()) throw Object.assign(new Error("the marker file is a symbolic link; refusing to write through it"), { refusal: true }); }
+  catch (e) { if (e && e.refusal) throw e; /* absent: fine */ }
   fs.writeFileSync(markerPath(data, root), body, { encoding: "utf8", flag: exclusive ? "wx" : "w" });
 }
 export function clearProjectState(data, root) {
@@ -223,5 +226,5 @@ function cli() {
   return 0;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { process.exit(cli()); } catch (e) { console.log("FAIL " + (e && e.code ? e.code : "could not record the answer")); process.exit(1); }
+  try { process.exit(cli()); } catch (e) { console.log("FAIL " + (e && e.refusal ? e.message : e && e.code ? e.code : "could not record the answer")); process.exit(1); }
 }

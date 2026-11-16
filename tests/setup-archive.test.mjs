@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig, suggestConfig, staleReport } from "../scripts/freshness.mjs";
 import { archiveCopy, nextName, loadArchiveConfig, starterConfig } from "../scripts/archive.mjs";
 import { plan } from "../scripts/setup.mjs";
@@ -24,7 +24,11 @@ function env(extra = {}) {
   return { ...clean, HOME, USERPROFILE: HOME, ...extra };
 }
 const node = (file, args, opts = {}) => spawnSync(process.execPath, [file, ...args], { encoding: "utf8", env: env(opts.env), input: opts.input, cwd: opts.cwd || tmp("pms-cwd-") });
-const setup = (p, ...a) => node(script("setup.mjs"), ["init", "--root", p, ...a]);
+// The made-up HOME stands in for the account's real home folder through setup.mjs's cli(realHome) seam (the real CLI
+// refuses to run when USERPROFILE / HOME disagrees with the operating system's idea of the home folder).
+const SETUP_AS_HOME = `import { cli } from ${JSON.stringify(pathToFileURL(script("setup.mjs")).href)}; process.exit(cli(process.argv.slice(1), { realHome: process.env.USERPROFILE }));`;
+const setupRun = (args, opts = {}) => spawnSync(process.execPath, ["--input-type=module", "-e", SETUP_AS_HOME, ...args], { encoding: "utf8", env: env(opts.env), cwd: opts.cwd || tmp("pms-cwd-") });
+const setup = (p, ...a) => setupRun(["init", "--root", p, ...a]);
 const archive = (p, ...a) => node(script("archive.mjs"), [...a, "--root", p]);
 const tree = (d) => readdirSync(d, { recursive: true }).map((x) => String(x).replace(/\\/g, "/")).sort();
 const CREATED = ["Jobs", "Jobs/_Archive", "Jobs/series_log.md", "Jobs/state_manifest.json", "MDs", "MDs/HANDOVER.md",
@@ -109,7 +113,7 @@ test("setup refuses the home folder and a missing folder, and writes nothing", (
   assert.equal(r.status, 2); assert.match(r.stdout, /FAIL .*home folder/);
   assert.deepEqual(tree(HOME), before);
   assert.equal(setup(join(tmp("pms-gone-"), "nope"), "--write").status, 2);
-  assert.equal(node(script("setup.mjs"), ["bogus"]).status, 2);
+  assert.equal(setupRun(["bogus"]).status, 2);
 });
 
 test("the plan puts the work log before the manifest and the hand-over file last of the three", () => {

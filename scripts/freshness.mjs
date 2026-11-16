@@ -17,23 +17,45 @@ const MAX_FILES = 20000, MAX_DEPTH = 12;
 
 const slash = (s) => String(s).replace(/\\/g, "/");
 
-export function loadConfig(root) {
+// A path entry that stays inside the project and names something below the root: no "..", not the root itself
+// ("./", ".", "/", ""), not a drive-letter or absolute form.
+const entryProblem = (e) => {
+  const segs = slash(e).split("/").filter((x) => x && x !== ".");
+  if (segs.length === 0) return "names the project folder itself";
+  if (segs.includes("..")) return 'contains ".."';
+  if (/^[A-Za-z]:/.test(segs[0])) return "is a drive path";
+  return "";
+};
+// Returns { cfg } or { error } (a clear config problem). The Stop hook treats an error like "no config": it fails open.
+export function loadConfigChecked(root) {
+  let cfg;
   try {
     let raw = fs.readFileSync(path.join(root, ...CONFIG_REL), "utf8");
     if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1); // a BOM breaks JSON.parse (PowerShell 5.1 writes one)
-    const cfg = JSON.parse(raw);
-    if (!Array.isArray(cfg.state) || cfg.state.length === 0 || !cfg.state.every((s) => typeof s === "string")) return null;
-    if (!Array.isArray(cfg.work) || cfg.work.length === 0 || !cfg.work.every((s) => typeof s === "string")) return null;
-    return {
-      disabled: cfg.disabled === true, // keeps the config but switches the hook off for this project
-      state: cfg.state.map(slash),
-      work: cfg.work.map(slash),
-      extensions: Array.isArray(cfg.extensions) && cfg.extensions.length ? cfg.extensions.map(String) : [".md"],
-      skip: new Set([...DEFAULT_SKIP, ...(Array.isArray(cfg.skip) ? cfg.skip.map(String) : [])]),
-      reasonExtra: typeof cfg.reasonExtra === "string" ? cfg.reasonExtra : "",
-    };
-  } catch { return null; }
+    cfg = JSON.parse(raw);
+  } catch { return { error: "MDs/freshness.json is missing or is not valid JSON" }; }
+  if (!cfg || typeof cfg !== "object") return { error: "MDs/freshness.json must be an object" };
+  if (!Array.isArray(cfg.state) || cfg.state.length === 0 || !cfg.state.every((s) => typeof s === "string")) return { error: '"state" must be a non-empty list of file paths' };
+  if (!Array.isArray(cfg.work) || cfg.work.length === 0 || !cfg.work.every((s) => typeof s === "string")) return { error: '"work" must be a non-empty list of paths' };
+  for (const e of cfg.state) { const pr = entryProblem(e); if (pr) return { error: `"state" entry ${JSON.stringify(String(e).slice(0, 60))} ${pr}; the end-of-work check is off until it is fixed` }; }
+  // "work" entries that name the root itself or leave the project are ignored; nothing valid left = a config error
+  const work = cfg.work.filter((e) => !entryProblem(e));
+  if (work.length === 0) return { error: 'no usable "work" entry (each one names the project folder itself or contains ".."); the end-of-work check is off until it is fixed' };
+  let extensions = [".md"];
+  if (Array.isArray(cfg.extensions) && cfg.extensions.length) {
+    extensions = cfg.extensions.map(String).filter((x) => x.trim() !== ""); // an empty extension would match every file
+    if (extensions.length === 0) return { error: '"extensions" has only empty entries (it would match every file); the end-of-work check is off until it is fixed' };
+  }
+  return { cfg: {
+    disabled: cfg.disabled === true, // keeps the config but switches the hook off for this project
+    state: cfg.state.map(slash),
+    work: work.map(slash),
+    extensions,
+    skip: new Set([...DEFAULT_SKIP, ...(Array.isArray(cfg.skip) ? cfg.skip.map(String) : [])]),
+    reasonExtra: typeof cfg.reasonExtra === "string" ? cfg.reasonExtra : "",
+  } };
 }
+export function loadConfig(root) { return loadConfigChecked(root).cfg || null; }
 
 function walk(dir, cfg, depth, out) {
   if (depth > MAX_DEPTH || out.size >= MAX_FILES) return;
@@ -211,8 +233,8 @@ function cli() {
     return 0;
   }
   if (cmd === "check") {
-    const cfg = loadConfig(root);
-    if (!cfg) { console.log("FAIL no valid MDs/freshness.json in " + root); return 2; }
+    const { cfg, error } = loadConfigChecked(root);
+    if (!cfg) { console.log("FAIL no valid MDs/freshness.json in " + root + ": " + error); return 2; }
     if (cfg.disabled) { console.log("OK disabled in the config"); return 0; }
     const rep = staleReport(root, cfg, null);
     if (!rep) { console.log("FAIL a state file listed in the config is missing"); return 2; }

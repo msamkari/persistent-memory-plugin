@@ -1,4 +1,4 @@
-// PreToolUse(Bash) approval gate. Reads the tool call from stdin; makes NO network calls.
+// PreToolUse(Bash and PowerShell) approval gate. Reads the tool call from stdin; makes NO network calls.
 // 1) git commit/tag or gh pr create/edit whose text carries a Co-Authored-By / Claude-Session /
 //    session link / "Generated with Claude Code" signature -> DENY, unless the user explicitly asked
 //    for it and set PMS_ALLOW_TRAILERS=1.

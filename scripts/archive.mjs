@@ -16,7 +16,7 @@
 //      node archive.mjs init [--root DIR] [--write]                       prints / creates MDs/archive.json (never overwrites)
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export const CONFIG_REL = ["MDs", "archive.json"];
@@ -59,6 +59,7 @@ const checkReserved = (rel) => {
   for (const seg of slash(rel).split("/")) {
     const base = seg.replace(/[. ]+$/, "").split(".")[0].replace(/ +$/, "");
     if (RESERVED.test(base)) throw new Error(`the folder name "${seg}" is a reserved device name`);
+    if (/[. ]$/.test(seg)) throw new Error(`the folder name "${seg}" ends in a dot or a space (Windows cannot open it)`);
   }
 };
 // True only for a real calendar date written YYYY-MM-DD (not 2026-13-45, not 2026-02-30).
@@ -88,6 +89,24 @@ function assertNoLinks(root, target, what) {
   }
 }
 const sha = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+// The opened source handle must be the file that sits at the verified path inside the project: the parent chain has
+// no link, the real path is the expected one inside the real root, and handle and path are the same file (device + id).
+// Run after the open and again after the copy, so a folder swapped for a junction (and back) in between is caught.
+function verifyHandle(root, src, fd) {
+  assertNoLinks(root, src, "the source file path");
+  let real, realRoot, a, b;
+  try { realRoot = fs.realpathSync.native(root); real = fs.realpathSync.native(src); a = fs.fstatSync(fd, { bigint: true }); b = fs.lstatSync(src, { bigint: true }); }
+  catch { throw new Error("the source file changed while it was being archived; nothing was archived"); }
+  if (!inside(realRoot, real) || fold(real) !== fold(path.join(realRoot, path.relative(root, src))))
+    throw new Error("the source file resolves outside its place in the project; nothing was archived");
+  if (!a.isFile() || !b.isFile() || a.dev !== b.dev || a.ino !== b.ino)
+    throw new Error("the source file was replaced while it was being archived; nothing was archived");
+}
+// Exclusive publish of a finished temp file under its final name: a hard link fails if the name exists (never overwrites).
+function linkExclusive(tmp, dest) {
+  try { fs.linkSync(tmp, dest); }
+  catch (e) { if (e && e.code === "EEXIST") throw e; fs.copyFileSync(tmp, dest, fs.constants.COPYFILE_EXCL); } // a file system without hard links
+}
 const today = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 
 // Next free name for this stem and date. The plain name counts as the first slot, so "plain" and "a"
@@ -109,7 +128,8 @@ export function nextName(destDir, stem, ext, date, first) {
 }
 
 // Plans (write=false) or makes (write=true) the archive copy. Returns { src, dest, rel, written }.
-export function archiveCopy(root, file, { write = false, to = "", date = today() } = {}) {
+// _afterOpen is a test seam: called once, right after the source is opened, before it is verified.
+export function archiveCopy(root, file, { write = false, to = "", date = today(), _afterOpen = null } = {}) {
   root = path.resolve(root);
   const src = path.resolve(root, file);
   if (!inside(root, src)) throw new Error("the file is outside the project folder");
@@ -133,16 +153,40 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
   checkReserved(slash(path.relative(root, destDir)));
   assertNoLinks(root, destDir, "the archive folder path");
   const ext = path.extname(src), stem = path.basename(src, ext);
-  for (let attempt = 0; attempt < 27; attempt++) {
-    const dest = path.join(destDir, nextName(destDir, stem, ext, date, cfg.first));
-    const out = { src, dest, rel: slash(path.relative(root, dest)), written: false };
-    if (!write) return out;
+  if (!write) { const dest = path.join(destDir, nextName(destDir, stem, ext, date, cfg.first)); return { src, dest, rel: slash(path.relative(root, dest)), written: false }; }
+  // The bytes are read from ONE opened handle that is checked to be the project file, written to a temp name in the
+  // archive folder, hashed while copying, and only then published under its final name. A failure leaves nothing behind.
+  let fd = -1, tmp = "";
+  try {
+    fd = fs.openSync(src, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+    if (_afterOpen) _afterOpen({ src, destDir });
+    verifyHandle(root, src, fd);
     fs.mkdirSync(destDir, { recursive: true });
-    try { fs.copyFileSync(src, dest, fs.constants.COPYFILE_EXCL); }
-    catch (e) { if (e && e.code === "EEXIST") continue; throw e; } // another session took the name: take the next letter
-    if (sha(src) !== sha(dest)) throw new Error("the archive copy does not match the source: " + out.rel);
-    out.written = true;
-    return out;
+    assertNoLinks(root, destDir, "the archive folder path");
+    tmp = path.join(destDir, `.archive-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    const out = fs.openSync(tmp, "wx");
+    const h = createHash("sha256"), buf = Buffer.allocUnsafe(1 << 20);
+    try {
+      for (;;) {
+        const n = fs.readSync(fd, buf, 0, buf.length, null);
+        if (n === 0) break;
+        h.update(buf.subarray(0, n));
+        for (let o = 0; o < n;) o += fs.writeSync(out, buf, o, n - o);
+      }
+    } finally { fs.closeSync(out); }
+    verifyHandle(root, src, fd);                                         // still the same inside file after the copy
+    assertNoLinks(root, destDir, "the archive folder path");
+    const digest = h.digest("hex");
+    if (sha(tmp) !== digest) throw new Error("the archive copy does not match the bytes read from the source");
+    for (let attempt = 0; attempt < 27; attempt++) {
+      const dest = path.join(destDir, nextName(destDir, stem, ext, date, cfg.first));
+      try { linkExclusive(tmp, dest); }
+      catch (e) { if (e && e.code === "EEXIST") continue; throw e; }     // another session took the name: take the next letter
+      return { src, dest, rel: slash(path.relative(root, dest)), written: true };
+    }
+  } finally {
+    if (fd >= 0) try { fs.closeSync(fd); } catch { /* already closed */ }
+    if (tmp) try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
   }
   throw new Error("could not find a free archive name");
 }

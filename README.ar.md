@@ -1,4 +1,4 @@
-# Persistent Memory — إضافة لـClaude (v1.8.4)
+# Persistent Memory — إضافة لـClaude (v1.8.5)
 
 [English README](README.md) · [دليل التثبيت (عربي وإنجليزي)](INSTALL.md)
 
@@ -116,7 +116,7 @@ MyProject/
 
 ## الاختبارات
 
-`node --test tests/*.test.mjs` (236 فحصاً، واحد منها يُتخطّى حين لا تتوفر الروابط الرمزية)؛ يشغّلها CI على Ubuntu وWindows وmacOS، ويشغّل `claude plugin eval .` لفحص التفعيل وسلوك المدقّق.
+`node --test tests/*.test.mjs` (258 فحصاً، حتى اثنان منها يُتخطّيان حين لا تتوفر الروابط الرمزية أو تبديل المجلدات)؛ يشغّلها CI على Ubuntu وWindows وmacOS، ويشغّل `claude plugin eval .` لفحص التفعيل وسلوك المدقّق.
 
 ## الميزات حسب الإصدار
 

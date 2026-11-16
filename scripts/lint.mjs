@@ -13,8 +13,10 @@ const D = s => s.replace(/[٠-٩]/g, c => String.fromCharCode(c.charCodeAt(0) - 
 const cur = path.join(root, "MDs", "System_Current_MD");
 if (!root || !fs.existsSync(cur)) { say("FAIL", "MDs/System_Current_MD not found (give the memory folder as argument)"); finish(); }
 const read = f => D(fs.readFileSync(path.join(cur, f), "utf8"));
-const files = fs.readdirSync(cur).filter(f => f.endsWith(".md")).sort();
-const log = files.find(f => /^02_/.test(f) && !/\(conflicted copy\)/i.test(f)); // a sync-conflict copy must not be mistaken for the log
+// Sync-conflict copies ("x (PC's conflicted copy 2026-11-15).md", "x (conflict ...)") are not memory files: skipped everywhere.
+const CONFLICT = /conflicted copy|conflict/i;
+const files = fs.readdirSync(cur).filter(f => f.endsWith(".md") && !CONFLICT.test(f)).sort();
+const log = files.find(f => /^02_/.test(f));
 let max = 0;
 if (!log) say("WARN", "no 02_* log file; numbering checks skipped");
 else {

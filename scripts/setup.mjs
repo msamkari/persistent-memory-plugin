@@ -11,11 +11,12 @@
 // The memory files themselves (00_, 01_, ...) are written by the skill persistent-memory-system, not here.
 // No network, no other process.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { suggestConfig, CONFIG_REL as FRESHNESS_REL } from "./freshness.mjs";
 import { starterConfig, CONFIG_REL as ARCHIVE_REL } from "./archive.mjs";
-import { excludedReason } from "./onboarding.mjs";
+import { excludedReason, normRoot } from "./onboarding.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES = path.join(here, "..", "skills", "memory-setup", "templates");
@@ -57,12 +58,35 @@ export function plan(root, { lang = "en", freshness = true, date = today() } = {
   return items;
 }
 
+// Nothing is created through a link: every component of every path that would be created is looked at with lstat
+// (not exists(), which is false for a dangling link). A link anywhere on the way, or at the file itself, is refused
+// BEFORE anything is created, so a refusal leaves no half-made tree. Returns the list of problems (empty = fine).
+export function linkProblems(root, items) {
+  root = path.resolve(root);
+  const bad = [];
+  for (const it of items) {
+    if (it.action !== "create") continue;
+    let cur = root;
+    for (const seg of it.rel.split("/").filter(Boolean)) {
+      cur = path.join(cur, seg);
+      let st;
+      try { st = fs.lstatSync(cur); } catch (e) { if (e && e.code === "ENOENT") break; bad.push(`${it.rel}: cannot check ${seg}`); break; }
+      if (st.isSymbolicLink()) { bad.push(`${it.rel}: "${seg}" is a symbolic link or junction`); break; }
+    }
+  }
+  return bad;
+}
+const refuse = (bad) => Object.assign(new Error(`refusing to create anything through a link (${bad.slice(0, 3).join("; ")}). Nothing was created.`), { refusal: true });
+
 // Creates what the plan marks "create". Every file is written with the exclusive flag, so a file that
 // appeared in the meantime is kept, never replaced. Returns the items with action "created" | "kept".
 export function apply(root, opts = {}) {
   root = path.resolve(root);
   const done = [];
-  for (const it of plan(root, opts)) {
+  const items = plan(root, opts);
+  const bad = linkProblems(root, items);
+  if (bad.length) throw refuse(bad);
+  for (const it of items) {
     const p = path.join(root, ...it.rel.split("/"));
     if (it.action === "keep") { done.push({ ...it, action: "kept" }); continue; }
     if (it.kind === "dir") { fs.mkdirSync(p, { recursive: true }); done.push({ ...it, action: "created" }); continue; }
@@ -75,8 +99,15 @@ export function apply(root, opts = {}) {
   return done;
 }
 
-function cli() {
-  const args = process.argv.slice(2);
+// The account's real home folder, from the operating system and not from USERPROFILE / HOME.
+export function realHomeDir() { try { return os.userInfo().homedir; } catch { return ""; } }
+
+// Runs the command; a refusal or a file-system error becomes one "FAIL ..." line and exit code 1.
+export function cli(args = process.argv.slice(2), opts = {}) {
+  try { return run(args, opts); }
+  catch (e) { console.log("FAIL " + (e && e.refusal ? e.message : e && e.code ? e.code : "setup failed")); return 1; }
+}
+function run(args, { realHome } = {}) {
   const opt = (name) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] && !args[i + 1].startsWith("--") ? args[i + 1] : ""; };
   if (args[0] !== "init") {
     console.log("usage: node scripts/setup.mjs init [--root DIR] [--lang en|ar] [--no-freshness] [--show] [--write]");
@@ -84,11 +115,21 @@ function cli() {
   }
   const root = path.resolve(opt("--root") || process.env.CLAUDE_PROJECT_DIR || process.cwd());
   if (!isDir(root, ".")) { console.log("FAIL the project folder does not exist"); return 2; }
-  const ex = excludedReason(root);
+  // The "is this a project folder" guards must not depend on an environment variable alone: the home folder comes from
+  // the operating system, and when USERPROFILE / HOME names a different folder the run is refused. (realHome is the test seam.)
+  const home = realHome || realHomeDir();
+  if (!realHome) {
+    let envHome = ""; try { envHome = os.homedir(); } catch { /* unknown */ } // follows USERPROFILE / HOME, unlike os.userInfo()
+    if (!home) { console.log("FAIL cannot tell which folder is the home folder; refusing to set up a project"); return 2; }
+    if (envHome && normRoot(envHome) !== normRoot(home)) { console.log("FAIL the home folder variable (USERPROFILE / HOME) names a different folder than the account's real home folder; refusing to guess which folders are protected"); return 2; }
+  }
+  const ex = excludedReason(root, { home });
   if (ex) { console.log(`FAIL this folder is not set up as a project (${ex}). Choose the project's own folder with --root.`); return 2; }
   const opts = { lang: opt("--lang") === "ar" ? "ar" : "en", freshness: !args.includes("--no-freshness") };
   const write = args.includes("--write");
-  const items = write ? apply(root, opts) : plan(root, opts);
+  let items;
+  if (write) items = apply(root, opts);
+  else { items = plan(root, opts); const bad = linkProblems(root, items); if (bad.length) throw refuse(bad); }
   const label = { create: "WOULD CREATE", keep: "KEEP (exists)", created: "CREATED", kept: "KEPT (exists)" };
   for (const it of items) console.log(`${label[it.action]}  ${it.rel}${it.kind === "dir" ? "/" : ""}`);
   if (!write && args.includes("--show")) for (const it of items) if (it.kind === "file" && it.action === "create") console.log(`\n----- ${it.rel} -----\n${it.text}`);
@@ -98,5 +139,5 @@ function cli() {
   return 0;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { process.exit(cli()); } catch (e) { console.log("FAIL " + (e && e.code ? e.code : "setup failed")); process.exit(1); }
+  process.exit(cli());
 }

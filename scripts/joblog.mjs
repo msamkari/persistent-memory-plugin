@@ -75,8 +75,11 @@ export function checkRoot(root, { env = { CLAUDE_PROJECT_DIR: process.env.CLAUDE
   if (!fs.statSync(real).isDirectory()) refuse("the project root is not a folder");
   if (path.parse(real).root === real) refuse("a drive or filesystem root is not a project folder");
   let home = "";
-  try { home = fs.realpathSync.native(os.homedir()); } catch { /* unknown */ }
-  if (home && real.toLowerCase() === home.toLowerCase()) refuse("the home folder is not a project folder");
+  // both the environment's home (USERPROFILE / HOME) and the account's real home from the operating system
+  for (const h of [() => os.homedir(), () => os.userInfo().homedir]) {
+    try { home = fs.realpathSync.native(h()); } catch { continue; }
+    if (home && real.toLowerCase() === home.toLowerCase()) refuse("the home folder is not a project folder");
+  }
   // the session's folder: CLAUDE_PROJECT_DIR when the session sets it, otherwise the current folder (never both)
   let base;
   try { base = fs.realpathSync.native(path.resolve(env.CLAUDE_PROJECT_DIR || cwd)); } catch { refuse("the session folder does not exist"); }

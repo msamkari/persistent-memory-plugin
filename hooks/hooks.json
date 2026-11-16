@@ -42,6 +42,19 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PLUGIN_ROOT}/hooks/approval-gate.mjs"
+            ],
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

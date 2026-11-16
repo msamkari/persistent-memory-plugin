@@ -69,7 +69,7 @@ const kb = (n) => (n / 1024).toFixed(1);
 export function warnings(m, t = thresholds()) {
   const w = [];
   const big = m.files.filter((f) => f.bytes > t.fileKB * 1024);
-  for (const f of big) w.push(`${f.name} is ${kb(f.bytes)} KB (over ${t.fileKB} KB)`);
+  for (const f of big) w.push(`${safeName(f.name)} is ${kb(f.bytes)} KB (over ${t.fileKB} KB)`);
   if (m.bytes > t.totalKB * 1024) w.push(`total is ${kb(m.bytes)} KB (over ${t.totalKB} KB)`);
   return w;
 }
@@ -95,5 +95,5 @@ if (isMain()) {
   const m = dir && existsSync(dir) ? measure(dir) : null;
   if (!m) { console.log(`cannot measure: ${dir ? "MDs/System_Current_MD not found under " + dir : "memory folder path not set (memory_dir)"}`); process.exit(1); }
   console.log(summaryLines(m).join("\n"));
-  for (const f of m.files) console.log(`  ${f.name}\t${kb(f.bytes)} KB\t~${f.tokens} tokens`);
+  for (const f of m.files) console.log(`  ${safeName(f.name)}\t${kb(f.bytes)} KB\t~${f.tokens} tokens`);
 }
