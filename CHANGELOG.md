@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.1 (2026-11-17)
+License only: MIT instead of Apache-2.0, as the owner decided (sole copyright holder; all commits are by one author). LICENSE, NOTICE, plugin.json, README and privacy notes updated. Releases up to 1.9.0 stay under Apache-2.0. No code change.
+
 ## 1.9.0 (2026-11-17)
 Archive-before-write now covers files OUTSIDE the project. Found in use: a scheduled task's `SKILL.md` under the user's home Claude folder was overwritten with no backup, because the archive helper only accepted files inside the project. Backward compatible; no new dependency; the existing `archive.sh` commands behave as before. A red-team round on the first cut of this release found one medium and ten low issues; the fixes are included in this same version.
 - archive-external: `scripts/sh/archive-external.sh <absolute-path> [--root DIR] [--to DIR] [--date D] [--write]` (Node: `scripts/archive-external.mjs`) copies one outside file into the project's archive folder (the first rule's `to` folder of `MDs/archive.json`, or `--to`) as `external_<parent folder>_<name>_<6-char hash of the origin path>_<date><a|b|c>[.ext]` and appends `<sha256>  <archive name>  <date>  <origin path>` to `external_manifest.txt` there. It is a separate entry that NO skill lists in `allowed-tools`, so Claude Code asks the user before every run. The pre-approved `archive.sh` / `archive.mjs` reject `--external` with a clear message (R4-M1: before, the pre-approved pattern could copy any readable file, such as a private key, into the project, or drop a file into `.claude/commands`).

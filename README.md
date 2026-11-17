@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.9.0)
+# Persistent Memory — a Claude plugin (v1.9.1)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -147,4 +147,4 @@ Set the number of advisor calls in advance, with decision points: for example tw
 Long jobs should carry a line in the job file's STATUS block such as `BUDGET: max 5 USD or 3 rounds; stop and report when reached`. `memory-lint` warns when an active job has none.
 
 ## License
-Apache-2.0 (see `LICENSE` and `NOTICE`; copyright 2026 Mohammad Samkari). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.
+MIT (see `LICENSE` and `NOTICE`; releases up to 1.9.0 stay Apache-2.0; copyright 2026 Mohammad Samkari). Earlier standalone skill releases remain under PolyForm Noncommercial 1.0.0.

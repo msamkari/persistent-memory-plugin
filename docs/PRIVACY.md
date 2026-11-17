@@ -20,4 +20,4 @@ Not directed at children; the plugin is a developer and power-user tool.
 Questions and bug reports: https://github.com/msamkari/persistent-memory-plugin/issues
 
 ## Terms of use
-The plugin is provided under the Apache License 2.0 (see `LICENSE`), without warranty. You are responsible for the content of the memory files you write and for keeping secrets out of them.
+The plugin is provided under the MIT License (see `LICENSE`), without warranty. You are responsible for the content of the memory files you write and for keeping secrets out of them.
