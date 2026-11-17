@@ -15,6 +15,9 @@ const tmp = (p) => realpathSync(mkdtempSync(join(tmpdir(), p)));
 const put = (base, rel, body = "x") => { const p = join(base, ...rel.split("/")); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); return p; };
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const D = "2026-01-31";
+const H = (f) => sha(f.replace(/\\/g, "/")).slice(0, 6); // the short hash of the origin path in every archive name
+const script2 = join(here, "scripts", "archive-external.mjs");
+const cli2 = (args) => spawnSync(process.execPath, [script2, ...args], { encoding: "utf8" });
 const cli = (args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
 const ARCH = (p) => join(p, "MDs", "System_Previous_MDs", D.slice(0, 7));
 const trySymlink = (target, link) => { try { symlinkSync(target, link, process.platform === "win32" ? "junction" : "dir"); return true; } catch { return false; } };
@@ -30,11 +33,11 @@ test("external: a file outside the project is copied under external_<parent>_<na
   const body = readFileSync(file);
   const r = archiveExternal(proj, file, { write: true, date: D });
   assert.equal(r.written, true);
-  assert.equal(r.rel, `MDs/System_Previous_MDs/2026-01/external_my-task_SKILL_${D}a.md`);
+  assert.equal(r.rel, `MDs/System_Previous_MDs/2026-01/external_my-task_SKILL_${H(file)}_${D}a.md`);
   assert.deepEqual(readFileSync(r.dest), body);
   assert.equal(r.sha256, sha(body));
   const m = readFileSync(join(ARCH(proj), EXTERNAL_MANIFEST), "utf8");
-  assert.equal(m, `${sha(body)}  external_my-task_SKILL_${D}a.md  ${D}  ${file.replace(/\\/g, "/")}\n`);
+  assert.equal(m, `${sha(body)}  external_my-task_SKILL_${H(file)}_${D}a.md  ${D}  ${file.replace(/\\/g, "/")}\n`);
   assert.deepEqual(readFileSync(file), body, "the source is untouched");
 });
 
@@ -42,7 +45,7 @@ test("external: without --write nothing is created", () => {
   const { proj, file } = fixture();
   const r = archiveExternal(proj, file, { date: D });
   assert.equal(r.written, false);
-  assert.match(r.rel, /external_my-task_SKILL_2026-01-31a\.md$/);
+  assert.match(r.rel, /external_my-task_SKILL_[0-9a-f]{6}_2026-01-31a\.md$/);
   assert.equal(existsSync(join(proj, "MDs")), false);
 });
 
@@ -50,7 +53,7 @@ test("external: the same day gets letters a, b, c and the manifest keeps one lin
   const { proj, file } = fixture();
   const names = [];
   for (let i = 0; i < 3; i++) { writeFileSync(file, "v" + i); names.push(archiveExternal(proj, file, { write: true, date: D }).rel.split("/").pop()); }
-  assert.deepEqual(names, [`external_my-task_SKILL_${D}a.md`, `external_my-task_SKILL_${D}b.md`, `external_my-task_SKILL_${D}c.md`]);
+  assert.deepEqual(names, ["a", "b", "c"].map((l) => `external_my-task_SKILL_${H(file)}_${D}${l}.md`));
   const lines = readFileSync(join(ARCH(proj), EXTERNAL_MANIFEST), "utf8").trim().split("\n");
   assert.equal(lines.length, 3);
   assert.equal(lines[1].split("  ")[0], sha("v1"));
@@ -67,9 +70,9 @@ test("external: two tasks that are both called SKILL.md get different archive na
 
 test("external: an existing archive name is never overwritten (an occupied a is skipped, its bytes stay)", () => {
   const { proj, file } = fixture();
-  const taken = put(ARCH(proj), `external_my-task_SKILL_${D}a.md`, "OLD COPY");
+  const taken = put(ARCH(proj), `external_my-task_SKILL_${H(file)}_${D}a.md`, "OLD COPY");
   const r = archiveExternal(proj, file, { write: true, date: D });
-  assert.match(r.rel, /SKILL_2026-01-31b\.md$/);
+  assert.match(r.rel, /SKILL_[0-9a-f]{6}_2026-01-31b\.md$/);
   assert.equal(readFileSync(taken, "utf8"), "OLD COPY");
   // a failure while the name is taken by a race leaves no temp file behind
   assert.deepEqual(readdirSync(ARCH(proj)).filter((n) => n.endsWith(".tmp")), []);
@@ -119,7 +122,7 @@ test("external: a bad date, a --to outside the project or on a network path is r
 test("external: --to chooses the folder; the manifest goes with the copies", () => {
   const { proj, file } = fixture();
   const r = archiveExternal(proj, file, { write: true, date: D, to: "Jobs/_Archive" });
-  assert.equal(r.rel, `Jobs/_Archive/external_my-task_SKILL_${D}a.md`);
+  assert.equal(r.rel, `Jobs/_Archive/external_my-task_SKILL_${H(file)}_${D}a.md`);
   assert.equal(r.manifest, `Jobs/_Archive/${EXTERNAL_MANIFEST}`);
   assert.ok(existsSync(join(proj, r.manifest)));
 });
@@ -147,16 +150,16 @@ test("existing behaviour: without --external a path outside the project is still
 test("external CLI: plan, write, strict usage errors, original unchanged", () => {
   const { proj, file } = fixture();
   const before = statSync(file).mtimeMs, body = readFileSync(file);
-  const plan = cli(["copy", "--external", file, "--root", proj, "--date", D]);
+  const plan = cli2([file, "--root", proj, "--date", D]);
   assert.equal(plan.status, 0, plan.stdout);
-  assert.match(plan.stdout, /^Would archive to MDs\/System_Previous_MDs\/2026-01\/external_my-task_SKILL_2026-01-31a\.md/);
+  assert.match(plan.stdout, /^Would archive to MDs\/System_Previous_MDs\/2026-01\/external_my-task_SKILL_[0-9a-f]{6}_2026-01-31a\.md/);
   assert.equal(existsSync(join(proj, "MDs")), false);
-  const w = cli(["copy", "--external", file, "--root", proj, "--date", D, "--write"]);
+  const w = cli2([file, "--root", proj, "--date", D, "--write"]);
   assert.equal(w.status, 0, w.stdout);
   assert.match(w.stdout, new RegExp(`^OK archived to .*verified, sha256 ${sha(body)}; recorded in .*${EXTERNAL_MANIFEST}`));
   assert.deepEqual(readFileSync(file), body); assert.equal(statSync(file).mtimeMs, before);
-  for (const args of [["copy", "--external"], ["copy", "--external", file, "extra.md"], ["init", "--external", file], ["copy", "--external", "rel/path.md"]]) {
-    const r = cli([...args, "--root", proj]);
+  for (const args of [[], [file, "extra.md"], ["--external", file], ["rel/path.md"]]) {
+    const r = cli2([...args, "--root", proj]);
     assert.equal(r.status, 1, args.join(" "));
     assert.match(r.stdout, /^FAIL /);
   }
@@ -165,7 +168,8 @@ test("external CLI: plan, write, strict usage errors, original unchanged", () =>
 test("the skills document the external rule (the pinned main skill stays unchanged)", () => {
   const a = readFileSync(join(here, "skills", "memory-archive", "SKILL.md"), "utf8");
   assert.match(a, /Files outside the project/);
-  assert.match(a, /--external/);
+  assert.match(a, /archive-external\.sh/);
+  assert.match(a, /approval/i);
   assert.match(a, /external_manifest\.txt/);
   const m = readFileSync(join(here, "skills", "memory-continuity", "SKILL.md"), "utf8");
   assert.match(m, /scheduled task/i);

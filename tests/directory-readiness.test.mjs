@@ -27,7 +27,7 @@ test("every plugin command a skill tells Claude to run is covered by its own pre
   for (const name of skills) {
     const entries = BASH_ENTRIES(allowed(name)).map((e) => e.replace(/ \*$/, ""));
     const body = read(`skills/${name}/SKILL.md`);
-    const cmds = [...body.matchAll(/bash (\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/[a-z-]+\.sh)/g)].map((m) => "bash " + m[1]);
+    const cmds = [...body.matchAll(/bash (\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/[a-z-]+\.sh)/g)].map((m) => "bash " + m[1]).filter((c) => !/archive-external.sh$/.test(c)); // archive-external.sh is deliberately NOT pre-approved
     if (entries.length === 0) { assert.ok(!/node "\$\{CLAUDE_PLUGIN_ROOT\}/.test(body) || name === "memory-log", name); continue; }
     assert.ok(cmds.length > 0, name + " has pre-approvals but shows no command");
     for (const c of cmds) assert.ok(entries.includes(c), `${name}: ${c} is not covered by allowed-tools (${entries.join(" | ")})`);

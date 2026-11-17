@@ -63,7 +63,7 @@ test("the new skills run the plugin's scripts in place: no script is copied into
     const s = read(`skills/${d}/SKILL.md`);
     const cmds = [...s.matchAll(/bash (\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/[a-z-]+\.sh)/g)].map((m) => m[1]);
     assert.ok(cmds.length > 0, d);
-    for (const c of cmds) assert.match(c, /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/(setup|archive|onboarding)\.sh$/);
+    for (const c of cmds) assert.match(c, /^\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/sh\/(setup|archive|archive-external|onboarding)\.sh$/);
   }
   assert.deepEqual(readdirSync(join(root, "skills", "memory-setup", "templates")).sort(), ["HANDOVER.start.ar.md", "HANDOVER.start.md"]);
   assert.doesNotMatch(code("scripts/setup.mjs").join("\n"), /copyFileSync|\.mjs"\s*,\s*root/);

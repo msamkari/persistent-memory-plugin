@@ -13,11 +13,12 @@
 // with "first": "plain" (the naming of the main skill). A file that matches no rule is refused: add a rule or --to.
 //
 // Files OUTSIDE the project (user-level config such as scheduled tasks or settings, v1.9.0): the explicit form
-//   node archive.mjs copy --external <absolute-path> [--root DIR] [--to DIR] [--write]
+//   node archive-external.mjs <absolute-path> [--root DIR] [--to DIR] [--write]   (scripts/sh/archive-external.sh, NOT pre-approved: the user is asked)
 // copies such a file into the project's archive folder as external_<parent folder>_<name>_<date><letter><ext> (the first
 // rule's "to" folder, or --to), appends "<sha256>  <archive name>  <date>  <origin path>" to external_manifest.txt in that
-// folder, and never touches the source. A symlink or junction anywhere on the source path, a device name, a network path
-// or a file inside the project (use the normal form) is refused. Without --external a path outside the project is still refused.
+// folder, and never touches the source. A symlink or junction anywhere on the source path, a device name, a network path,
+// an alternate data stream (:), credential-like names and folders, a --to outside the project archive folders or under .claude, and a file
+// inside the project (use the normal form) are refused. archive.mjs / archive.sh themselves reject --external.
 //
 // CLI: node archive.mjs copy <file> [--root DIR] [--to DIR] [--write]     default: prints the target, copies nothing
 //      node archive.mjs init [--root DIR] [--write]                       prints / creates MDs/archive.json (never overwrites)
@@ -201,7 +202,31 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
 }
 
 export const EXTERNAL_MANIFEST = "external_manifest.txt";
-const safePart = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, 60) || "x";
+const safePart = (s, max = 40) => String(s).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, max) || "x";
+const REFUSED = "this location is protected (credentials, keys, tokens, secrets, browser or password-store data) and is never copied through --external";
+// A path segment that looks like a credential, key, token, secret or browser / password-store data. Checked on the
+// path as given and again on the real (long-name) path, before any file is looked at.
+const CRED_SEG = [
+  /^\.(ssh|aws|gnupg|gpg|azure|kube|docker|netrc|npmrc|pypirc|git-credentials|password-store|gcloud)$/i,
+  /^\.?credentials?(\..*)?$/i, /^id_(rsa|dsa|ecdsa|ed25519)/i, /\.(pem|key|p12|pfx|ppk|kdbx|keystore|jks)$/i,
+  /^\.env/i, /token/i, /secret/i, /passw(or)?d/i, /keepass|1password|bitwarden|lastpass|keychain/i,
+  /^(user data|login data|cookies|web data|local state|logins\.json|key[34]\.db|cert9\.db|profiles|chromium|firefox|brave-?software|opera( software)?|vivaldi)$/i,
+];
+const credentialLike = (p) => slash(p).split("/").some((seg) => { const s = seg.replace(/[. ]+$/, "") || seg; return CRED_SEG.some((re) => re.test(s) || re.test(seg)); });
+// The extension is kept only when it is plain; the rest of the name goes through safePart (only [A-Za-z0-9._-]).
+const PLAIN_EXT = /^\.[A-Za-z0-9]{1,16}$/;
+// Percent-encodes what would break or disguise a one-line manifest field: control and C1 characters, line / paragraph
+// separators, bidi and zero-width marks, the percent sign itself, and every space of a run of 2 or more (or at an end).
+const encodeField = (s) => String(s)
+  .replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb%]|(?<= ) | (?= )|^ | $/g,
+    (c) => [...Buffer.from(c, "utf8")].map((b) => "%" + b.toString(16).toUpperCase().padStart(2, "0")).join(""));
+// Streamed SHA-256 from position 0 (no whole-file read into memory).
+function shaFd(fd) {
+  const h = createHash("sha256"), buf = Buffer.allocUnsafe(1 << 20);
+  for (let pos = 0; ;) { const n = fs.readSync(fd, buf, 0, buf.length, pos); if (n === 0) break; h.update(buf.subarray(0, n)); pos += n; }
+  return h.digest("hex");
+}
+function shaFile(file) { const fd = fs.openSync(file, "r"); try { return shaFd(fd); } finally { fs.closeSync(fd); } }
 // Every existing component from the drive root down must be a real folder / file, never a symbolic link or junction.
 function assertExternalPath(abs) {
   const top = path.parse(abs).root;
@@ -209,7 +234,7 @@ function assertExternalPath(abs) {
   for (const seg of path.relative(top, abs).split(path.sep).filter(Boolean)) {
     cur = path.join(cur, seg);
     let st;
-    try { st = fs.lstatSync(cur); } catch (e) { if (e && e.code === "ENOENT") throw new Error("file not found: " + slash(abs)); throw new Error(`cannot check the external file path: ${seg}`); }
+    try { st = fs.lstatSync(cur); } catch (e) { if (e && e.code === "ENOENT") throw new Error("file not found"); throw new Error(`cannot check the external file path: ${seg}`); }
     if (st.isSymbolicLink()) throw new Error(`the external file path: "${seg}" is a symbolic link or junction; refusing to follow it`);
   }
 }
@@ -221,21 +246,27 @@ function verifyExternalHandle(src, fd) {
   if (!a.isFile() || !b.isFile() || a.dev !== b.dev || a.ino !== b.ino)
     throw new Error("the external file was replaced while it was being archived; nothing was archived");
 }
+const MAX_EXTERNAL_BYTES = 256 * 1024 * 1024;
+const winDrive = /^[A-Za-z]:[\\/]/;
 
-// Same as archiveCopy, for ONE file outside the project (absolute path).
+// Same as archiveCopy, for ONE file outside the project (absolute path). Only the separate entry script
+// scripts/sh/archive-external.sh reaches this from a command line (it is not pre-approved by any skill, so the user is asked).
+// Without write it checks the rules on the path text only and touches no outside file (it cannot tell whether the file exists).
 // Returns { src, dest, rel, written, sha256, manifest }.
-export function archiveExternal(root, file, { write = false, to = "", date = today(), _afterOpen = null, _afterCopy = null } = {}) {
+export function archiveExternal(root, file, { write = false, to = "", date = today(), _afterOpen = null, _afterCopy = null, _maxBytes = MAX_EXTERNAL_BYTES } = {}) {
   root = path.resolve(root);
   const f = String(file);
   if (!path.isAbsolute(f)) throw new Error("--external needs an absolute path");
   if (/^[\\/]{2}/.test(f)) throw new Error("--external must not be a network or device path (// or two backslashes)");
+  if (process.platform === "win32" && !winDrive.test(f)) throw new Error("--external needs a full path that starts with a drive letter (C:/...)");
   if (/[\u0000-\u001f\u007f]/.test(f)) throw new Error("the external path contains control characters");
-  const src = path.resolve(f);
+  const afterDrive = process.platform === "win32" ? f.slice(2) : f;
+  if (afterDrive.includes(":")) throw new Error("the external path contains ':' (an alternate data stream or other special form); refusing");
+  if (credentialLike(f)) throw new Error(REFUSED);
+  let src = path.resolve(f);
+  if (credentialLike(src)) throw new Error(REFUSED);
   if (src === root || inside(root, src)) throw new Error("this file is inside the project: use copy without --external");
   checkReserved(slash(path.relative(path.parse(src).root, src)));
-  assertExternalPath(src);
-  let st; try { st = fs.lstatSync(src); } catch { throw new Error("file not found: " + slash(src)); }
-  if (!st.isFile()) throw new Error("not a regular file: " + slash(src));
   if (!isRealDate(date)) throw new Error("date must be a real calendar date, YYYY-MM-DD");
   const cfg = loadArchiveConfig(root);
   if (to && /^[\\/]{2}/.test(String(to))) throw new Error("--to must not start with // or two backslashes (network paths are not allowed)");
@@ -244,20 +275,48 @@ export function archiveExternal(root, file, { write = false, to = "", date = tod
   else { destRel = cfg.rules[0].to; byMonth = cfg.rules[0].byMonth; }
   const destDir = path.join(root, ...destRel.split("/").filter(Boolean), ...(byMonth ? [date.slice(0, 7)] : []));
   if (!inside(root, destDir)) throw new Error("the archive folder is outside the project folder");
-  checkReserved(slash(path.relative(root, destDir)));
+  const destRelNorm = slash(path.relative(root, destDir));
+  if (destRelNorm.split("/").some((s) => /^\.(claude|git)$/i.test(s.replace(/[. ]+$/, "")) || s.includes(":")))
+    throw new Error("the archive folder must not be inside .claude or .git (commands, agents, settings, hooks, skills would be loaded from it)");
+  if (!cfg.rules.some((r) => fold(destRelNorm + "/").startsWith(fold(r.to)))) throw new Error("the archive folder is not one of this project's archive folders (the \"to\" folders of MDs/archive.json or the defaults)");
+  checkReserved(destRelNorm);
   assertNoLinks(root, destDir, "the archive folder path");
-  const ext = path.extname(src);
-  const stem = `external_${safePart(path.basename(path.dirname(src)))}_${safePart(path.basename(src, ext))}`;
+  const nameFor = (origin) => {
+    const raw = path.extname(origin), ext = PLAIN_EXT.test(raw) ? raw : "";
+    const hash = createHash("sha256").update(slash(origin)).digest("hex").slice(0, 6);
+    return { ext, stem: `external_${safePart(path.basename(path.dirname(origin)))}_${safePart(path.basename(origin, ext))}_${hash}` };
+  };
   const manifest = path.join(destDir, EXTERNAL_MANIFEST);
   const mrel = slash(path.relative(root, manifest));
-  if (!write) { const dest = path.join(destDir, nextName(destDir, stem, ext, date, "a")); return { src, dest, rel: slash(path.relative(root, dest)), written: false, sha256: "", manifest: mrel }; }
-  let fd = -1, tmp = "";
+  if (!write) { const { stem, ext } = nameFor(src); const dest = path.join(destDir, nextName(destDir, stem, ext, date, "a")); return { src, dest, rel: slash(path.relative(root, dest)), written: false, sha256: "", manifest: mrel }; }
+  assertExternalPath(src);
+  let st; try { st = fs.lstatSync(src); } catch { throw new Error("file not found"); }
+  if (!st.isFile()) throw new Error("not a regular file");
+  // The real (long-name) path: an 8.3 short name or a case difference is resolved here, and is what the checks and the manifest use.
+  let realRoot, real;
+  try { realRoot = fs.realpathSync.native(root); real = fs.realpathSync.native(src); } catch { throw new Error("cannot resolve the external file path"); }
+  if (credentialLike(real)) throw new Error(REFUSED);
+  if (real === realRoot || inside(realRoot, real)) throw new Error("this file is inside the project: use copy without --external");
+  src = real;
+  const { stem, ext } = nameFor(src);
+  let fd = -1, tmp = "", mfd = -1, createdManifest = false, published = "";
   try {
     fd = fs.openSync(src, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
     if (_afterOpen) _afterOpen({ src, destDir });
     verifyExternalHandle(src, fd);
+    const s0 = fs.fstatSync(fd, { bigint: true });
+    if (s0.size > BigInt(_maxBytes)) throw new Error("the external file is too large for --external");
     fs.mkdirSync(destDir, { recursive: true });
     assertNoLinks(root, destDir, "the archive folder path");
+    // The manifest handle is opened (and checked) BEFORE anything is published, so no copy can exist without its line.
+    try { const m = fs.lstatSync(manifest); if (m.isSymbolicLink() || !m.isFile()) throw new Error("x"); }
+    catch (e) { if (e && e.code === "ENOENT") createdManifest = true; else throw new Error("the external manifest is not a regular file; refusing"); }
+    try { mfd = fs.openSync(manifest, fs.constants.O_WRONLY | fs.constants.O_APPEND | fs.constants.O_CREAT | (fs.constants.O_NOFOLLOW || 0), 0o644); }
+    catch { throw new Error("the external manifest cannot be opened for appending; refusing (nothing was archived)"); }
+    const ms = fs.fstatSync(mfd, { bigint: true });
+    if (!ms.isFile() || ms.nlink > 1n) throw new Error("the external manifest is not a regular single-link file; refusing");
+    let rm; try { rm = fs.realpathSync.native(manifest); } catch { throw new Error("the external manifest cannot be resolved; refusing"); }
+    if (fold(rm) !== fold(path.join(fs.realpathSync.native(destDir), EXTERNAL_MANIFEST))) throw new Error("the external manifest resolves outside the archive folder; refusing");
     tmp = path.join(destDir, `.archive-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
     const out = fs.openSync(tmp, "wx");
     const h = createHash("sha256"), buf = Buffer.allocUnsafe(1 << 20);
@@ -273,26 +332,37 @@ export function archiveExternal(root, file, { write = false, to = "", date = tod
     verifyExternalHandle(src, fd);
     assertNoLinks(root, destDir, "the archive folder path");
     const digest = h.digest("hex");
-    if (sha(tmp) !== digest) throw new Error("the archive copy does not match the bytes read from the source");
-    // The manifest is append-only; a link or a folder in its place is refused before anything is published.
-    try { const m = fs.lstatSync(manifest); if (m.isSymbolicLink() || !m.isFile()) throw new Error("the external manifest is not a regular file; refusing"); }
-    catch (e) { if (!(e && e.code === "ENOENT")) throw e; }
+    // The source must not have changed during the copy: same size and time, and the same bytes when read again.
+    const s1 = fs.fstatSync(fd, { bigint: true });
+    if (s1.size !== s0.size || s1.mtimeNs !== s0.mtimeNs || shaFd(fd) !== digest) throw new Error("the external file changed while it was being copied; nothing was archived");
+    if (shaFile(tmp) !== digest) throw new Error("the archive copy does not match the bytes read from the source");
     for (let attempt = 0; attempt < 27; attempt++) {
       const dest = path.join(destDir, nextName(destDir, stem, ext, date, "a"));
       try { linkExclusive(tmp, dest); }
       catch (e) { if (e && e.code === "EEXIST") continue; throw e; }
-      if (sha(dest) !== digest) throw new Error("the published archive copy does not match the source: " + slash(path.relative(root, dest)));
-      fs.appendFileSync(manifest, `${digest}  ${path.basename(dest)}  ${date}  ${slash(src)}\n`, "utf8");
+      published = dest;
+      if (shaFile(dest) !== digest) throw new Error("the published archive copy does not match the source");
+      const b = Buffer.from(`${digest}  ${path.basename(dest)}  ${date}  ${encodeField(slash(src))}\n`, "utf8");
+      for (let o = 0; o < b.length;) o += fs.writeSync(mfd, b, o, b.length - o);
+      published = "";
       return { src, dest, rel: slash(path.relative(root, dest)), written: true, sha256: digest, manifest: mrel };
     }
+  } catch (e) {
+    // No published copy without its manifest line: take the new name back (it is a fresh link of the temp file).
+    if (published) try { fs.rmSync(published, { force: true }); } catch { /* best effort */ }
+    if (mfd >= 0) { try { fs.closeSync(mfd); } catch { /* closed */ } mfd = -1; }
+    if (createdManifest) try { if (fs.statSync(manifest).size === 0) fs.rmSync(manifest, { force: true }); } catch { /* best effort */ }
+    throw e;
   } finally {
     if (fd >= 0) try { fs.closeSync(fd); } catch { /* already closed */ }
+    if (mfd >= 0) try { fs.closeSync(mfd); } catch { /* already closed */ }
     if (tmp) try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
   }
   throw new Error("could not find a free archive name");
 }
 
-const USAGE = "usage: node scripts/archive.mjs copy <file> | copy --external <absolute-path> [--root DIR] [--to DIR] [--date YYYY-MM-DD] [--write] | init [--root DIR] [--write]";
+const USAGE = "usage: node scripts/archive.mjs copy <file> [--root DIR] [--to DIR] [--date YYYY-MM-DD] [--write] | init [--root DIR] [--write]";
+const USAGE_EXT = "usage: archive-external.sh <absolute-path> [--root DIR] [--to DIR] [--date YYYY-MM-DD] [--write]";
 // Strict parsing: a flag that needs a value without one, or an unknown flag (a typo like --wirte), is a usage error.
 function parseArgs(args) {
   const VALUE = new Set(["--root", "--date", "--to", "--external"]), BOOL = new Set(["--write"]);
@@ -314,8 +384,8 @@ function cli() {
   const cmd = args[0];
   if (cmd !== "init" && cmd !== "copy") { console.log(USAGE); return 2; }
   const o = parseArgs(args.slice(1));
-  if (o.external && cmd !== "copy") throw Object.assign(new Error("--external only goes with copy. " + USAGE), { usage: true });
-  if (cmd === "init" ? o.pos.length !== 0 : o.pos.length !== (o.external ? 0 : 1)) throw Object.assign(new Error(USAGE), { usage: true });
+  if (o.external) throw Object.assign(new Error("--external is not available through archive.sh (that command is pre-approved). Copying a file from outside the project needs the user's approval: run scripts/sh/archive-external.sh <absolute-path> instead. " + USAGE), { usage: true });
+  if (cmd === "init" ? o.pos.length !== 0 : o.pos.length !== 1) throw Object.assign(new Error(USAGE), { usage: true });
   if (o.date && !isRealDate(o.date)) throw Object.assign(new Error("--date must be a real calendar date, YYYY-MM-DD"), { usage: true });
   const root = path.resolve(o.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
   const write = o.write;
@@ -329,18 +399,27 @@ function cli() {
     console.log("OK wrote MDs/archive.json");
     return 0;
   }
-  if (o.external) {
-    const r = archiveExternal(root, o.external, { write, to: o.to, date: o.date || undefined });
-    console.log(r.written ? `OK archived to ${r.rel} (verified, sha256 ${r.sha256}; recorded in ${r.manifest}). The original was not changed.`
-      : `Would archive to ${r.rel} (nothing copied; add --write).`);
-    return 0;
-  }
   {
     const r = archiveCopy(root, o.pos[0], { write, to: o.to, date: o.date || undefined });
     console.log(r.written ? `OK archived to ${r.rel} (verified). The original was not changed.`
       : `Would archive to ${r.rel} (nothing copied; add --write).`);
     return 0;
   }
+}
+// Entry for scripts/sh/archive-external.sh (NOT pre-approved by any skill, so Claude Code asks the user before it runs).
+export function externalCli(args) {
+  const o = parseArgs(args);
+  if (o.external || o.pos.length !== 1) throw Object.assign(new Error(USAGE_EXT), { usage: true });
+  if (o.date && !isRealDate(o.date)) throw Object.assign(new Error("--date must be a real calendar date, YYYY-MM-DD"), { usage: true });
+  const root = path.resolve(o.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const r = archiveExternal(root, o.pos[0], { write: o.write, to: o.to, date: o.date || undefined });
+  console.log(r.written ? `OK archived to ${r.rel} (verified, sha256 ${r.sha256}; recorded in ${r.manifest}). The original was not changed.`
+    : `Would archive to ${r.rel} (nothing copied; the path text was checked, the file itself is only looked at with --write).`);
+  return 0;
+}
+export function runExternalCli(args) {
+  try { return externalCli(args); }
+  catch (e) { console.log("FAIL " + (e && e.code && !e.usage ? `file system error ${e.code}` : e && e.message ? e.message : "archive failed")); return 1; }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { process.exit(cli()); } catch (e) { console.log("FAIL " + (e && e.message ? e.message : "archive failed")); process.exit(1); }
