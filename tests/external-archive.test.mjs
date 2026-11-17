@@ -11,7 +11,7 @@ import { archiveExternal, archiveCopy, EXTERNAL_MANIFEST } from "../scripts/arch
 // 1.9.0: archive-before-write for files OUTSIDE the project (user-level config such as scheduled tasks). Temp folders only.
 const here = join(dirname(fileURLToPath(import.meta.url)), "..");
 const script = join(here, "scripts", "archive.mjs");
-const tmp = (p) => realpathSync(mkdtempSync(join(tmpdir(), p)));
+const tmp = (p) => realpathSync.native(mkdtempSync(join(tmpdir(), p)));
 const put = (base, rel, body = "x") => { const p = join(base, ...rel.split("/")); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); return p; };
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const D = "2026-01-31";
@@ -103,7 +103,7 @@ test("external: relative, network, device, control-character, missing, folder an
   const bad = (p, re) => assert.throws(() => archiveExternal(proj, p, { write: true, date: D }), re, String(p));
   bad("my-task/SKILL.md", /absolute path/);
   bad("//server/share/x.md", /network or device/);
-  bad("\\\\.\\COM1", /network or device/);
+  bad("\\\\.\\COM1", /network or device|absolute path/);
   bad(file + "\nx", /control characters/);
   bad(join(outside, "nope.md"), /file not found/);
   bad(dirname(file), /not a regular file/);

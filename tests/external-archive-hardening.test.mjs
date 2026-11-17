@@ -10,7 +10,7 @@ import { archiveExternal, EXTERNAL_MANIFEST } from "../scripts/archive.mjs";
 
 // 1.9.0 round-4 fixes: the external copy is a separate entry that no skill pre-approves, plus hardening. Temp folders only.
 const here = join(dirname(fileURLToPath(import.meta.url)), "..");
-const tmp = (p) => realpathSync(mkdtempSync(join(tmpdir(), p)));
+const tmp = (p) => realpathSync.native(mkdtempSync(join(tmpdir(), p)));
 const put = (base, rel, body = "x") => { const p = join(base, ...rel.split("/")); mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, body); return p; };
 const sha = (b) => createHash("sha256").update(b).digest("hex");
 const D = "2026-01-31";
