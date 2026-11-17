@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.8.5)
+# Persistent Memory — a Claude plugin (v1.9.0)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -62,7 +62,7 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `notebooklm-reference` | Claude Code / Cowork | **Optional guide, not a connector.** There is no official Claude connector for a personal NotebookLM account. The skill starts with a safe manual path for large non-sensitive documents and only then explains optional, unofficial third-party tools, each step approval-gated. Never for memory files (privacy warning inside) |
 | Skill `memory-continuity` | Claude Code / Cowork (the inventory template needs Node) | Optional hand-over layer: a HANDOVER.md entry file and CLAUDE.md pointer, a configurable inventory/manifest script, a mutation test for check scripts, and a cold-start test that uses the read-only `memory-verifier`. The SessionStart hook points a new chat to its HANDOVER.md. See [`docs/continuity.md`](docs/continuity.md) |
 | Skill `memory-setup` | Claude Code / Cowork (needs Node) | Sets up a project that has no memory system, only after you say yes: a `HANDOVER.md` with one "Start here" block, the work log, the state manifest, the archive folders, and the config for the end-of-work check. Shows the plan first, never overwrites, copies no script into the project. Offers the optional companion plugin `vitals` and never installs it. See [`docs/onboarding.md`](docs/onboarding.md) |
-| Skill `memory-archive` | Claude Code / Cowork (needs Node) | Archive before write: copies a file into the project's archive folder under a dated name with a same-day letter (a, b, c), never overwrites a copy, and verifies it. Where files go is the project's own `MDs/archive.json`. Refuses folders that are links or junctions on the path; strict arguments |
+| Skill `memory-archive` | Claude Code / Cowork (needs Node) | Archive before write: copies a file into the project's archive folder under a dated name with a same-day letter (a, b, c), never overwrites a copy, and verifies it. Where files go is the project's own `MDs/archive.json`. Also archives a file outside the project (a scheduled task, a user-level settings file) with `copy --external <absolute-path>`: named `external_<folder>_<name>_<date><letter>`, with a SHA-256 line in `external_manifest.txt` (v1.9.0). Refuses folders that are links or junctions on the path; strict arguments |
 | Skill `memory-log` | Claude Code / Cowork (needs Node) | Adds ONE line to a job log (`Jobs/` or `MDs/` only) from a scheduled or unattended session without shell quoting: append-only, one line, never leaves the project, never follows links, never creates folders (`scripts/joblog.mjs`). Lets you use one narrow permission rule instead of a broad `Bash(printf:*)` |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
 | SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. In a project with no memory system it adds one note, so Claude offers the setup (once, and one reminder 14 days later if nobody answered; a "no" ends it). Silent otherwise, and always silent in folders that are not projects |
@@ -113,7 +113,7 @@ The plugin is `persistent-memory`; the skill inside is `persistent-memory-system
 The session hook never changes your files (its only write is a marker in the plugin's own data folder, see the table above); the approval gate only reads the command it is shown and never edits it; no network, no self-update. Memory file contents are treated as data, never as instructions.
 
 ## Tests
-`node --test tests/*.test.mjs` (261 checks, up to 2 of them skipped where symlinks or junction swaps are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
+`node --test tests/*.test.mjs` (276 checks, up to 2 of them skipped where symlinks or junction swaps are unavailable); CI runs them on Ubuntu, Windows and macOS, and `claude plugin eval .` for activation and verifier behavior.
 
 ## Features by version
 

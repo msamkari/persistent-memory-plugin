@@ -12,6 +12,13 @@
 // The first rule whose "from" is a prefix of the file's path wins. Without the file, the rules above apply
 // with "first": "plain" (the naming of the main skill). A file that matches no rule is refused: add a rule or --to.
 //
+// Files OUTSIDE the project (user-level config such as scheduled tasks or settings, v1.9.0): the explicit form
+//   node archive.mjs copy --external <absolute-path> [--root DIR] [--to DIR] [--write]
+// copies such a file into the project's archive folder as external_<parent folder>_<name>_<date><letter><ext> (the first
+// rule's "to" folder, or --to), appends "<sha256>  <archive name>  <date>  <origin path>" to external_manifest.txt in that
+// folder, and never touches the source. A symlink or junction anywhere on the source path, a device name, a network path
+// or a file inside the project (use the normal form) is refused. Without --external a path outside the project is still refused.
+//
 // CLI: node archive.mjs copy <file> [--root DIR] [--to DIR] [--write]     default: prints the target, copies nothing
 //      node archive.mjs init [--root DIR] [--write]                       prints / creates MDs/archive.json (never overwrites)
 import fs from "node:fs";
@@ -193,11 +200,103 @@ export function archiveCopy(root, file, { write = false, to = "", date = today()
   throw new Error("could not find a free archive name");
 }
 
-const USAGE = "usage: node scripts/archive.mjs copy <file> [--root DIR] [--to DIR] [--date YYYY-MM-DD] [--write] | init [--root DIR] [--write]";
+export const EXTERNAL_MANIFEST = "external_manifest.txt";
+const safePart = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^[._]+|[._]+$/g, "").slice(0, 60) || "x";
+// Every existing component from the drive root down must be a real folder / file, never a symbolic link or junction.
+function assertExternalPath(abs) {
+  const top = path.parse(abs).root;
+  let cur = top;
+  for (const seg of path.relative(top, abs).split(path.sep).filter(Boolean)) {
+    cur = path.join(cur, seg);
+    let st;
+    try { st = fs.lstatSync(cur); } catch (e) { if (e && e.code === "ENOENT") throw new Error("file not found: " + slash(abs)); throw new Error(`cannot check the external file path: ${seg}`); }
+    if (st.isSymbolicLink()) throw new Error(`the external file path: "${seg}" is a symbolic link or junction; refusing to follow it`);
+  }
+}
+function verifyExternalHandle(src, fd) {
+  assertExternalPath(src);
+  let a, b;
+  try { a = fs.fstatSync(fd, { bigint: true }); b = fs.lstatSync(src, { bigint: true }); }
+  catch { throw new Error("the external file changed while it was being archived; nothing was archived"); }
+  if (!a.isFile() || !b.isFile() || a.dev !== b.dev || a.ino !== b.ino)
+    throw new Error("the external file was replaced while it was being archived; nothing was archived");
+}
+
+// Same as archiveCopy, for ONE file outside the project (absolute path).
+// Returns { src, dest, rel, written, sha256, manifest }.
+export function archiveExternal(root, file, { write = false, to = "", date = today(), _afterOpen = null, _afterCopy = null } = {}) {
+  root = path.resolve(root);
+  const f = String(file);
+  if (!path.isAbsolute(f)) throw new Error("--external needs an absolute path");
+  if (/^[\\/]{2}/.test(f)) throw new Error("--external must not be a network or device path (// or two backslashes)");
+  if (/[\u0000-\u001f\u007f]/.test(f)) throw new Error("the external path contains control characters");
+  const src = path.resolve(f);
+  if (src === root || inside(root, src)) throw new Error("this file is inside the project: use copy without --external");
+  checkReserved(slash(path.relative(path.parse(src).root, src)));
+  assertExternalPath(src);
+  let st; try { st = fs.lstatSync(src); } catch { throw new Error("file not found: " + slash(src)); }
+  if (!st.isFile()) throw new Error("not a regular file: " + slash(src));
+  if (!isRealDate(date)) throw new Error("date must be a real calendar date, YYYY-MM-DD");
+  const cfg = loadArchiveConfig(root);
+  if (to && /^[\\/]{2}/.test(String(to))) throw new Error("--to must not start with // or two backslashes (network paths are not allowed)");
+  let destRel, byMonth = false;
+  if (to) destRel = dirForm(path.isAbsolute(to) ? path.relative(root, to) : to);
+  else { destRel = cfg.rules[0].to; byMonth = cfg.rules[0].byMonth; }
+  const destDir = path.join(root, ...destRel.split("/").filter(Boolean), ...(byMonth ? [date.slice(0, 7)] : []));
+  if (!inside(root, destDir)) throw new Error("the archive folder is outside the project folder");
+  checkReserved(slash(path.relative(root, destDir)));
+  assertNoLinks(root, destDir, "the archive folder path");
+  const ext = path.extname(src);
+  const stem = `external_${safePart(path.basename(path.dirname(src)))}_${safePart(path.basename(src, ext))}`;
+  const manifest = path.join(destDir, EXTERNAL_MANIFEST);
+  const mrel = slash(path.relative(root, manifest));
+  if (!write) { const dest = path.join(destDir, nextName(destDir, stem, ext, date, "a")); return { src, dest, rel: slash(path.relative(root, dest)), written: false, sha256: "", manifest: mrel }; }
+  let fd = -1, tmp = "";
+  try {
+    fd = fs.openSync(src, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
+    if (_afterOpen) _afterOpen({ src, destDir });
+    verifyExternalHandle(src, fd);
+    fs.mkdirSync(destDir, { recursive: true });
+    assertNoLinks(root, destDir, "the archive folder path");
+    tmp = path.join(destDir, `.archive-${process.pid}-${randomBytes(6).toString("hex")}.tmp`);
+    const out = fs.openSync(tmp, "wx");
+    const h = createHash("sha256"), buf = Buffer.allocUnsafe(1 << 20);
+    try {
+      for (;;) {
+        const n = fs.readSync(fd, buf, 0, buf.length, null);
+        if (n === 0) break;
+        h.update(buf.subarray(0, n));
+        for (let o = 0; o < n;) o += fs.writeSync(out, buf, o, n - o);
+      }
+    } finally { fs.closeSync(out); }
+    if (_afterCopy) _afterCopy({ src, destDir, tmp });
+    verifyExternalHandle(src, fd);
+    assertNoLinks(root, destDir, "the archive folder path");
+    const digest = h.digest("hex");
+    if (sha(tmp) !== digest) throw new Error("the archive copy does not match the bytes read from the source");
+    // The manifest is append-only; a link or a folder in its place is refused before anything is published.
+    try { const m = fs.lstatSync(manifest); if (m.isSymbolicLink() || !m.isFile()) throw new Error("the external manifest is not a regular file; refusing"); }
+    catch (e) { if (!(e && e.code === "ENOENT")) throw e; }
+    for (let attempt = 0; attempt < 27; attempt++) {
+      const dest = path.join(destDir, nextName(destDir, stem, ext, date, "a"));
+      try { linkExclusive(tmp, dest); }
+      catch (e) { if (e && e.code === "EEXIST") continue; throw e; }
+      if (sha(dest) !== digest) throw new Error("the published archive copy does not match the source: " + slash(path.relative(root, dest)));
+      fs.appendFileSync(manifest, `${digest}  ${path.basename(dest)}  ${date}  ${slash(src)}\n`, "utf8");
+      return { src, dest, rel: slash(path.relative(root, dest)), written: true, sha256: digest, manifest: mrel };
+    }
+  } finally {
+    if (fd >= 0) try { fs.closeSync(fd); } catch { /* already closed */ }
+    if (tmp) try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ }
+  }
+  throw new Error("could not find a free archive name");
+}
+
+const USAGE = "usage: node scripts/archive.mjs copy <file> | copy --external <absolute-path> [--root DIR] [--to DIR] [--date YYYY-MM-DD] [--write] | init [--root DIR] [--write]";
 // Strict parsing: a flag that needs a value without one, or an unknown flag (a typo like --wirte), is a usage error.
 function parseArgs(args) {
-  const VALUE = new Set(["--root", "--date", "--to"]), BOOL = new Set(["--write"]);
-  const o = { pos: [], write: false, root: "", date: "", to: "" };
+  const VALUE = new Set(["--root", "--date", "--to", "--external"]), BOOL = new Set(["--write"]);
+  const o = { pos: [], write: false, root: "", date: "", to: "", external: "" };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (VALUE.has(a)) {
@@ -215,7 +314,8 @@ function cli() {
   const cmd = args[0];
   if (cmd !== "init" && cmd !== "copy") { console.log(USAGE); return 2; }
   const o = parseArgs(args.slice(1));
-  if (cmd === "init" ? o.pos.length !== 0 : o.pos.length !== 1) throw Object.assign(new Error(USAGE), { usage: true });
+  if (o.external && cmd !== "copy") throw Object.assign(new Error("--external only goes with copy. " + USAGE), { usage: true });
+  if (cmd === "init" ? o.pos.length !== 0 : o.pos.length !== (o.external ? 0 : 1)) throw Object.assign(new Error(USAGE), { usage: true });
   if (o.date && !isRealDate(o.date)) throw Object.assign(new Error("--date must be a real calendar date, YYYY-MM-DD"), { usage: true });
   const root = path.resolve(o.root || process.env.CLAUDE_PROJECT_DIR || process.cwd());
   const write = o.write;
@@ -227,6 +327,12 @@ function cli() {
     fs.mkdirSync(path.dirname(cfgPath), { recursive: true });
     fs.writeFileSync(cfgPath, text, { encoding: "utf8", flag: "wx" });
     console.log("OK wrote MDs/archive.json");
+    return 0;
+  }
+  if (o.external) {
+    const r = archiveExternal(root, o.external, { write, to: o.to, date: o.date || undefined });
+    console.log(r.written ? `OK archived to ${r.rel} (verified, sha256 ${r.sha256}; recorded in ${r.manifest}). The original was not changed.`
+      : `Would archive to ${r.rel} (nothing copied; add --write).`);
     return 0;
   }
   {
