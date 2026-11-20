@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
+import { safeName } from "./safe-name.mjs";
 
 export const CONFIG_REL = ["MDs", "freshness.json"];
 const DEFAULT_SKIP = ["_Archive", "_archive", "System_Previous_MDs", "_merged", "_proposals", "node_modules", ".git"];
@@ -53,7 +54,8 @@ export function loadConfigChecked(root) {
     const v = cfg.verify;
     const contains = v && typeof v === "object" && !Array.isArray(v) && typeof v.contains === "string" ? v.contains.trim() : "";
     if (!v || typeof v !== "object" || Array.isArray(v)) warn = '"verify" must be an object like { "contains": "inventory.py", "reminder": "..." }';
-    else if ([...contains].length < 3 || [...contains].length > 80) warn = '"verify.contains" must be a text of 3 to 80 characters (not counting outer spaces)';
+    else if ([...contains].length < 4 || [...contains].length > 80 || contains.startsWith(".")) warn = '"verify.contains" must be a text of 4 to 80 characters (not counting outer spaces) and must not start with "." (too generic)';
+    else if (safeName(contains, 1000) !== contains || /[^\S ]/.test(contains)) warn = '"verify.contains" must be plain text: no control, zero-width, bidi, tab, newline or no-break-space characters, no double spaces (the text shown in the message must be the text that is matched)';
     else if (v.reminder !== undefined && typeof v.reminder !== "string") warn = '"verify.reminder" must be a text';
     else verify = { contains, reminder: typeof v.reminder === "string" ? v.reminder : "" };
     if (warn) warn += "; the closing-check step (verify) is ignored until it is fixed";
@@ -245,6 +247,9 @@ export async function verifyPending(transcriptPath, cfg, { maxMs = 8000, maxByte
   };
   const shellWrite = (cmd) => WRITEISH.test(cmd) && (cfg.state.some((s) => cmd.includes(fold(s))) || work.some((w) => cmd.includes(w)));
   const writes = [], verifies = [];
+  const seenIds = new Set();                       // a tool_use id counts once: copies (api-request-blob lines) are not new events
+  const esc = (h) => JSON.stringify(h).slice(1, -1); // the line is JSON text: a quote or backslash in a path or the needle is escaped there
+  const hints = [needle, ...cfg.state.map(fold), ...work].flatMap((h) => [h, fold(esc(h))]).map((h) => h.replace(/\/\/+/g, "/"));
   const t0 = Date.now(); let bytes = 0, over = false;
   const files = [transcriptPath, ...subagentTranscripts(transcriptPath)];
   for (let fi = 0; fi < files.length && !over; fi++) {
@@ -256,11 +261,15 @@ export async function verifyPending(transcriptPath, cfg, { maxMs = 8000, maxByte
         n++; bytes += line.length;
         if (Date.now() - t0 > maxMs || bytes > maxBytes) { over = true; break; }
         if (!line.includes('"tool_use"')) continue;
+        const norm = fold(line).replace(/\/\/+/g, "/");   // same cheap prefilter as writtenByThisSession
+        if (!hints.some((h) => norm.includes(h))) continue;
         let obj; try { obj = JSON.parse(line); } catch { continue; }
+        if (obj?.type !== "assistant") continue;       // only real assistant turns (not api-request-blob copies, results, queue lines)
         const content = obj?.message?.content; if (!Array.isArray(content)) continue;
         const ts = obj.timestamp ? Date.parse(obj.timestamp) : NaN;
         content.forEach((b, bi) => {
           if (b?.type !== "tool_use" || !b.input) return;
+          if (typeof b.id === "string" && b.id) { if (seenIds.has(b.id)) return; seenIds.add(b.id); }
           const ev = { f: fi, s: n * 1000 + bi, ts };
           if (FILE_TOOLS.has(b.name)) { if (counts(relOf(String(b.input.file_path || b.input.notebook_path || "")))) writes.push(ev); }
           else if (SHELL_TOOLS.has(b.name)) {
@@ -319,7 +328,7 @@ function cli() {
     const { cfg, error, warn } = loadConfigChecked(root);
     if (warn) console.log("NOTE " + warn);
     if (!cfg) { console.log("FAIL no valid MDs/freshness.json in " + root + ": " + error); return 2; }
-    if (cfg.verify) console.log(`NOTE verify is on: the hook also asks for a Bash/PowerShell command containing "${cfg.verify.contains}" after the last write.`);
+    if (cfg.verify) console.log(`NOTE verify is on: the hook also asks for a Bash/PowerShell command containing "${safeName(cfg.verify.contains)}" after the last write.`);
     if (cfg.disabled) { console.log("OK disabled in the config"); return 0; }
     const rep = staleReport(root, cfg, null);
     if (!rep) { console.log("FAIL a state file listed in the config is missing"); return 2; }

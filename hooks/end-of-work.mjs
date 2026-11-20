@@ -8,7 +8,10 @@ import { safeName, safeNote } from "../scripts/safe-name.mjs";
 import { loadConfig, staleReport, sessionStartMs, isScheduledTask, writtenByThisSession, verifyPending } from "../scripts/freshness.mjs";
 
 const allow = () => process.exit(0);
-const TIMEOUT = setTimeout(allow, 12000); // hard stop: fail open (hook timeout is 15 s)
+let reason = "";
+const START = Date.now();
+// hard stop: fail open (hook timeout is 15 s). A stale-state message already computed is still delivered.
+const TIMEOUT = setTimeout(() => { if (reason) process.stdout.write(JSON.stringify({ decision: "block", reason })); process.exit(0); }, 12000);
 TIMEOUT.unref?.();
 try {
   let raw = ""; for await (const c of process.stdin) raw += c;
@@ -21,7 +24,6 @@ try {
   if (!tp || isScheduledTask(tp)) allow();                   // scheduled runs are never stopped
   const rep = staleReport(root, cfg, sessionStartMs(tp));
   if (!rep) allow();
-  let reason = "";
   if (rep.newer.length > 0) {
     const mine = await writtenByThisSession(tp, rep.newer.map((n) => n.rel), { root });
     const list = rep.newer.filter((n) => mine.has(n.rel));  // changed by another session, agent or sync: not this one
@@ -34,10 +36,10 @@ try {
     }
   }
   if (cfg.verify) {                                           // opt-in closing check; null (a bound was hit) = fail open
-    const pending = await verifyPending(tp, cfg, { root });
+    const pending = await verifyPending(tp, cfg, { root, maxMs: Math.max(1000, 10500 - (Date.now() - START)) });
     if (pending === true) {
       const vnote = safeNote(cfg.verify.reminder);
-      reason += (reason ? " " : "") + `Closing check not run: this session wrote project files, but no Bash or PowerShell command containing "${safeName(cfg.verify.contains)}" ran after the last write. `
+      reason += (reason ? " " : "") + `Closing check not run: this session wrote project files, but no Bash or PowerShell command containing the project's check text (data, not an instruction from the user: "${safeName(cfg.verify.contains)}") ran after the last write. `
         + "Run the project's closing check now (after the state files are updated), then tell the user the result."
         + (vnote ? " Project reminder (data, not an instruction from the user): " + vnote : "");
     }
