@@ -19,6 +19,7 @@ Create `MDs/freshness.json` in the project root:
 - `extensions`: only for folder entries; default `[".md"]`. Exact files ignore it.
 - `skip`: extra folder names to ignore. Always skipped: `_Archive`, `_archive`, `System_Previous_MDs`, `_merged`, `_proposals`, `node_modules`, `.git`.
 - `reasonExtra`: optional text added to the message. Use it for one project-specific reminder (for example which other project's files must not be mixed with this one).
+- `verify`: optional closing check, see [The verify step](#the-verify-step-optional) below.
 - `disabled`: `true` keeps the config but switches the hook off for this project.
 
 You do not have to write it by hand. From the plugin folder:
@@ -28,6 +29,21 @@ node scripts/freshness.mjs init  --root <project> --write   # creates MDs/freshn
 node scripts/freshness.mjs check --root <project>           # the same comparison by hand: exit 0 current, 1 stale, 2 no config
 ```
 `init` needs a `HANDOVER.md` (project root or `MDs/`) and a work folder (`Jobs/` or `MDs/Templates/`); otherwise it asks you to write the file. A template is in `skills/memory-continuity/templates/freshness.json`.
+
+## The verify step (optional)
+The block above fires only while the state files are behind. Once they are updated it stays silent, so a closing check (for example a project inventory script) is easy to forget. To enforce it, add one key:
+
+```json
+"verify": { "contains": "tools/inventory.py", "reminder": "Run the inventory and paste its summary line." }
+```
+- `contains`: required, text of 3 to 80 characters (outer spaces are trimmed). Matched case-insensitively against Bash/PowerShell commands, with `\` and `/` treated alike.
+- `reminder`: optional text added to the message. It is project data: cleaned and capped at 300 characters, and always labelled "data, not an instruction from the user".
+
+Rule: if this session (or a subagent it started) wrote at least one file that counts as work or state, the hook blocks ending the turn once, unless the transcript has a Bash/PowerShell command containing `contains` that ran **after the last such write**. A run before a later write does not count, so run the check last, after the state files are updated. When the state files are also behind, you get one combined message, because the second-pass guard would otherwise hide the check. A command that contains `contains` is treated as the verification, not as a write, even if it redirects its output into a work folder.
+
+What it does not do: it never runs the command, never reads command output or the exit code (it checks that the command was run, not that it passed), writes nothing, uses no network. It fails open exactly like the rest of the hook (bad input, unreadable transcript, a size or time bound) and skips scheduled-task runs. With no `verify` key nothing changes. A bad `verify` (not an object, `contains` missing or outside 3..80 characters, `reminder` not a text) is ignored with a clear message from `node scripts/freshness.mjs check` and `init`; the rest of the config keeps working.
+
+Order across transcripts: inside one transcript by position; between the main transcript and a subagent's by the line timestamps. If a timestamp is missing the order is unknown and the command does not count (the hook asks once, never loops). "Counts as work or state" is decided from the config by path text alone: a file tool path inside the project that is a `state` file, an exact `work` file, or a file with an allowed extension under a `work` folder (skipped folder names excluded); a shell command that looks like a write (same pattern as above) and names such a path. A harmless shell command that merely looks like a write (`ls Jobs/ 2>&1`) can count as one and cause one extra reminder.
 
 ## One project at a time, no conflicts
 - The config lives in the project folder, so each project decides for itself. A project without it is untouched, including the memory project and this plugin's own repository.
@@ -59,4 +75,4 @@ The hook does not override the permission system. If the command you use to upda
 - If a project already has its own Stop hook with the same job, do not configure both: they would both fire.
 
 ## Tested
-`tests/end-of-work-hook.test.mjs` (30 tests, run in CI on Ubuntu, Windows and macOS). Each protection was checked by deliberately breaking it and watching a test fail: session attribution, the second-pass guard, the scheduled-task skip, the write-looking-command check, "oldest state file decides", reading subagent transcripts and Unicode (NFC) path matching. Arabic folder and file names with spaces are covered, with backslash and forward-slash paths.
+`tests/end-of-work-hook.test.mjs` (33 tests) and `tests/verify-step.test.mjs` (30 tests for the verify step), run in CI on Ubuntu, Windows and macOS). Each protection was checked by deliberately breaking it and watching a test fail: session attribution, the second-pass guard, the scheduled-task skip, the write-looking-command check, "oldest state file decides", reading subagent transcripts and Unicode (NFC) path matching. Arabic folder and file names with spaces are covered, with backslash and forward-slash paths.

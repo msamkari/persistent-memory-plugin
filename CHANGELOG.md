@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.0 (2026-11-20)
+Added (opt-in, no change unless a project sets it): the end-of-work Stop hook can enforce a closing check. A project adds `"verify": { "contains": "<text>", "reminder": "<text>" }` to `MDs/freshness.json`. If this session (or a subagent) wrote a work or state file, the hook blocks ending the turn once unless a Bash/PowerShell command containing `contains` (case-insensitive) ran after the last such write. Combined with the stale-state message when both apply. The hook never runs the command, writes nothing, uses no network, fails open on any error or bound, and skips scheduled-task runs. `reminder` is cleaned, capped at 300 characters and labelled as project data. A bad `verify` (`contains` not a text of 3..80 characters, `reminder` not a text, not an object) is ignored, and `freshness.mjs check` / `init` print a NOTE. `check` also notes when verify is on. Permissions, `allowed-tools`, license and name unchanged; the template `freshness.json` is unchanged (documented in `docs/end-of-work.md` instead).
+- Tests: new `tests/verify-step.test.mjs` (30), added to the CI list; the 33 existing end-of-work tests pass untouched.
+- Known limits: it checks that the command ran, not that it passed; a harmless shell command that looks like a write and names a work path counts as a write and can cause one extra reminder; ordering between a subagent and the main transcript needs line timestamps.
+
 ## 1.9.1 (2026-11-17)
 License only: MIT instead of Apache-2.0, as the owner decided (sole copyright holder; all commits are by one author). LICENSE, NOTICE, plugin.json, README and privacy notes updated. Releases up to 1.9.0 stay under Apache-2.0. No code change.
 
