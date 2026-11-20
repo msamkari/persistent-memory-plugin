@@ -1,4 +1,4 @@
-# Persistent Memory — a Claude plugin (v1.9.1)
+# Persistent Memory — a Claude plugin (v1.10.0)
 
 [العربية: README.ar.md](README.ar.md)
 
@@ -66,7 +66,7 @@ Full steps for Windows, macOS and Linux, auto-update and troubleshooting are in 
 | Skill `memory-log` | Claude Code / Cowork (needs Node) | Adds ONE line to a job log (`Jobs/` or `MDs/` only) from a scheduled or unattended session without shell quoting: append-only, one line, never leaves the project, never follows links, never creates folders (`scripts/joblog.mjs`). Lets you use one narrow permission rule instead of a broad `Bash(printf:*)` |
 | Agent `memory-verifier` | Claude Code / Cowork | Read-only audit: does the state file match the log? |
 | SessionStart hook | Claude Code / Cowork only | Injects a short index (file names and dates, never contents) and, if the project has a HANDOVER.md, its path. In a project with no memory system it adds one note, so Claude offers the setup (once, and one reminder 14 days later if nobody answered; a "no" ends it). Silent otherwise, and always silent in folders that are not projects |
-| Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once (in every turn) when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
+| Stop hook (opt-in) | Claude Code / Cowork only | Does nothing unless the project has `MDs/freshness.json`. With it, blocks ending a turn once (in every turn) when this session wrote work files and the project's state files (HANDOVER, manifest) were not updated afterwards. Optional `verify` key: also asks once for a closing check command (for example an inventory script) after the last write. Reads file times and the session transcript only. See [`docs/end-of-work.md`](docs/end-of-work.md) |
 | PreToolUse approval gate | Claude Code / Cowork only | It can only deny or ask, never approve a command. Blocks `git commit`/`gh pr` text that carries Co-Authored-By, session links or tool signatures (unless `PMS_ALLOW_TRAILERS=1`, for when you explicitly want them) and asks you before any force push (also `git -C <dir> push`, `-fu`, `+refspec`, quoted and `bash -c` forms) or when the commit/PR text sits in a file (`-F`, `--body-file`, `gh api -f body=`) that it cannot read. It is advisory: aliases, variables and assembled strings are not seen. Decisions are logged when the memory folder is set |
 
 Hooks and agents are ignored in claude.ai chat; the skill works everywhere.

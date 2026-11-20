@@ -4,7 +4,8 @@
 //     "work":  ["Jobs/", "MDs/Templates/", "notes.md"],             // folders (end with "/") or exact files
 //     "extensions": [".md"],                                        // only for folder entries (default [".md"])
 //     "skip": ["_Archive", "_merged"],                              // extra folder names to skip
-//     "reasonExtra": "text appended to the block message" }         // optional
+//     "reasonExtra": "text appended to the block message",          // optional
+//     "verify": { "contains": "inventory.py", "reminder": "..." } } // optional: a closing check that must run after the last write
 // Rule: if a work file is newer than the OLDEST state file, the state is stale.
 // The hook then counts only work files THIS session wrote (see writtenByThisSession).
 import fs from "node:fs";
@@ -46,7 +47,19 @@ export function loadConfigChecked(root) {
     extensions = cfg.extensions.map(String).filter((x) => x.trim() !== ""); // an empty extension would match every file
     if (extensions.length === 0) return { error: '"extensions" has only empty entries (it would match every file); the end-of-work check is off until it is fixed' };
   }
-  return { cfg: {
+  // Optional closing check. A bad "verify" is ignored (the rest of the config still works) and reported in "warn".
+  let verify = null, warn = "";
+  if (cfg.verify !== undefined && cfg.verify !== null) {
+    const v = cfg.verify;
+    const contains = v && typeof v === "object" && !Array.isArray(v) && typeof v.contains === "string" ? v.contains.trim() : "";
+    if (!v || typeof v !== "object" || Array.isArray(v)) warn = '"verify" must be an object like { "contains": "inventory.py", "reminder": "..." }';
+    else if ([...contains].length < 3 || [...contains].length > 80) warn = '"verify.contains" must be a text of 3 to 80 characters (not counting outer spaces)';
+    else if (v.reminder !== undefined && typeof v.reminder !== "string") warn = '"verify.reminder" must be a text';
+    else verify = { contains, reminder: typeof v.reminder === "string" ? v.reminder : "" };
+    if (warn) warn += "; the closing-check step (verify) is ignored until it is fixed";
+  }
+  return { warn, cfg: {
+    verify,
     disabled: cfg.disabled === true, // keeps the config but switches the hook off for this project
     state: cfg.state.map(slash),
     work: work.map(slash),
@@ -199,6 +212,72 @@ export async function writtenByThisSession(transcriptPath, rels, { maxMs = 8000,
   return found;
 }
 
+// Opt-in "verify" step. Returns true when this session (and its subagents) wrote at least one file that counts as
+// work or state, and no Bash/PowerShell command containing verify.contains (case-insensitive) ran AFTER every such write.
+// false = nothing to verify; null = a bound was hit (the caller fails open). Reads the transcript only; runs nothing.
+// Order: inside one transcript by position; across transcripts (subagents) by line timestamps, and when either
+// timestamp is missing the order is unknown, so that command does not count (the hook asks once, never loops).
+// A command that contains the needle is a verification, never a write (so "check.py > Jobs/out.md" is not a new write).
+export async function verifyPending(transcriptPath, cfg, { maxMs = 8000, maxBytes = 400 * 1024 * 1024, root = "" } = {}) {
+  if (!cfg || !cfg.verify || !root) return false;
+  const needle = fold(cfg.verify.contains);
+  const roots = [fold(root).replace(/\/+$/, "")];
+  try { const r = fold(fs.realpathSync.native(root)).replace(/\/+$/, ""); if (!roots.includes(r)) roots.push(r); } catch { /* keep the given root */ }
+  const isAbs = (p) => /^([a-z]:)?\//.test(p);
+  const state = new Set(cfg.state.map(fold));
+  const exts = cfg.extensions.map((x) => x.toLowerCase());
+  const work = cfg.work.map(fold);
+  const skip = new Set([...cfg.skip].map((x) => String(x)));
+  const relOf = (raw) => {
+    let fp = path.posix.normalize(fold(raw)); if (!fp) return "";
+    if (!isAbs(fp)) fp = path.posix.normalize(roots[0] + "/" + fp);
+    for (const r of roots) if (fp.startsWith(r + "/")) return fp.slice(r.length + 1);
+    return "";
+  };
+  const counts = (rel) => {
+    if (!rel || rel.startsWith("../")) return false;
+    if (state.has(rel)) return true;
+    return work.some((w) => {
+      if (!w.endsWith("/")) return rel === w;
+      if (!rel.startsWith(w) || !exts.some((x) => rel.endsWith(x))) return false;
+      return !rel.split("/").slice(0, -1).some((seg) => skip.has(seg) || skip.has(seg.toLowerCase()));
+    });
+  };
+  const shellWrite = (cmd) => WRITEISH.test(cmd) && (cfg.state.some((s) => cmd.includes(fold(s))) || work.some((w) => cmd.includes(w)));
+  const writes = [], verifies = [];
+  const t0 = Date.now(); let bytes = 0, over = false;
+  const files = [transcriptPath, ...subagentTranscripts(transcriptPath)];
+  for (let fi = 0; fi < files.length && !over; fi++) {
+    const rl = readline.createInterface({ input: fs.createReadStream(files[fi], { encoding: "utf8" }), crlfDelay: Infinity });
+    rl.on("error", () => {});
+    let n = 0;
+    try {
+      for await (const line of rl) {
+        n++; bytes += line.length;
+        if (Date.now() - t0 > maxMs || bytes > maxBytes) { over = true; break; }
+        if (!line.includes('"tool_use"')) continue;
+        let obj; try { obj = JSON.parse(line); } catch { continue; }
+        const content = obj?.message?.content; if (!Array.isArray(content)) continue;
+        const ts = obj.timestamp ? Date.parse(obj.timestamp) : NaN;
+        content.forEach((b, bi) => {
+          if (b?.type !== "tool_use" || !b.input) return;
+          const ev = { f: fi, s: n * 1000 + bi, ts };
+          if (FILE_TOOLS.has(b.name)) { if (counts(relOf(String(b.input.file_path || b.input.notebook_path || "")))) writes.push(ev); }
+          else if (SHELL_TOOLS.has(b.name)) {
+            const cmd = fold(b.input.command || "");
+            if (cmd.includes(needle)) verifies.push(ev);
+            else if (shellWrite(cmd.replace(/\/\/+/g, "/"))) writes.push(ev);
+          }
+        });
+      }
+    } catch { /* unreadable file: keep what was found */ } finally { rl.close(); }
+  }
+  if (over) return null;
+  if (writes.length === 0) return false;
+  const after = (a, b) => (a.f === b.f ? a.s > b.s : Number.isFinite(a.ts) && Number.isFinite(b.ts) && a.ts > b.ts);
+  return !verifies.some((v) => writes.every((w) => after(v, w)));
+}
+
 // ---- CLI: node scripts/freshness.mjs init|check [--root DIR] [--write] ----
 // init  : looks at the project and PRINTS a suggested MDs/freshness.json. Read-only unless --write, which
 //         creates the file only if it does not exist yet (never overwrites).
@@ -224,7 +303,11 @@ function cli() {
   const root = path.resolve(ri >= 0 && args[ri + 1] ? args[ri + 1] : process.cwd());
   const cfgPath = path.join(root, ...CONFIG_REL);
   if (cmd === "init") {
-    if (fs.existsSync(cfgPath)) { console.log(`OK ${path.join(...CONFIG_REL)} already exists; nothing to do (init never overwrites).`); return 0; }
+    if (fs.existsSync(cfgPath)) {
+      console.log(`OK ${path.join(...CONFIG_REL)} already exists; nothing to do (init never overwrites).`);
+      const w = loadConfigChecked(root).warn; if (w) console.log("NOTE " + w);
+      return 0;
+    }
     const s = suggestConfig(root);
     if (!s) { console.log("FAIL could not suggest a config: need a HANDOVER.md (root or MDs/) and a work folder (Jobs/ or MDs/Templates/). Write MDs/freshness.json by hand: see docs/end-of-work.md"); return 2; }
     const text = JSON.stringify(s, null, 2) + "\n";
@@ -233,8 +316,10 @@ function cli() {
     return 0;
   }
   if (cmd === "check") {
-    const { cfg, error } = loadConfigChecked(root);
+    const { cfg, error, warn } = loadConfigChecked(root);
+    if (warn) console.log("NOTE " + warn);
     if (!cfg) { console.log("FAIL no valid MDs/freshness.json in " + root + ": " + error); return 2; }
+    if (cfg.verify) console.log(`NOTE verify is on: the hook also asks for a Bash/PowerShell command containing "${cfg.verify.contains}" after the last write.`);
     if (cfg.disabled) { console.log("OK disabled in the config"); return 0; }
     const rep = staleReport(root, cfg, null);
     if (!rep) { console.log("FAIL a state file listed in the config is missing"); return 2; }
